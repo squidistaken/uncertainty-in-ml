@@ -1,0 +1,13 @@
+[project]
+name = "uncertainty-in-ml"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.14",
+]
+
+[tool.ruff]
+line-length = 80
