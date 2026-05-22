@@ -1,0 +1,120 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage[a4paper, top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}
+
+\title{Assignment 2}
+\author{Maurice Meijer (S5480604) \\ Marcus Harald Olof Persson (S5343798) \\ Arthur Reuss (S5582253)}
+\date{\today}
+
+\bibliographystyle{plain}
+
+\begin{document}
+
+\maketitle
+
+\section{Uncertainty in Large Language Models}
+
+% Discuss whether token probabilities can be interpreted as calibrated confidence estimates, and what limitations exist in treating them this way. Consider the cases for hallucinations, incorrect predictions, and connections with the lecture on ”Uncertainty Quantification methods”.
+
+Large Language Models (LLMs) output a probability distribution for every token in a sequence. But just because we have these probabilities doe not mean they are actual confidence scores. Instead, token probabilities just show how likely a specific word piece is to come next based on the training data (See figure \ref{fig:token_prob}). 
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=0.75\linewidth]{assignment_2//images/token_probabilities.png}
+    \caption{Simplified diagram of token probabilities \cite{zhu2025decoding_online}.}
+    \label{fig:token_prob}
+\end{figure}
+
+\subsection*{The Calibration Breakdown} 
+
+If we want to use uncertainty estimates, they need to be calibrated. This means if a model is 90\% sure about something, it should be right 90\% of the time. Base language models are actually okay at this for predicting the next token. But modern LLMs are fine-tuned using methods like Reinforcement Learning from Human Feedback or Direct Preference Optimisation. These steps teach the model to give answers that humans like, not answers that are statistically the most likely. Because of this, the original probabilities get distorted, and the final models end up way too confident and badly calibrated. 
+
+\subsection*{The Mismatch Between Sequence Confidence and Factual Certainty}
+
+A big problem with using token probabilities for UQ is that mathematical probability isn't the same as factual certainty. Language is very flexible, so raw token probabilities mix up aleatoric uncertainty (natural randomness in how we phrase things) with epistemic uncertainty (when the model actually doesn't know the answer). Also, standard Maximum Likelihood Estimation (MLE) training doesn't let the model just say "I don't know." This leads to two main issues:
+
+\begin{itemize}
+    \item \textbf{False Uncertainty:} A model might know the right fact but give a low probability score, making it look uncertain. For example, if you ask for the capital of France, it could start the answer with ``Paris,'' ``The,'' ``It,'' or ``France's.'' The probability for each option drops because the mass is split up, but the model is actually completely sure about the fact itself \cite{nikitin2024kernellanguageentropyfinegrained}.
+    \item \textbf{False Confidence and Hallucinations:} If an LLM does not know a fact (e.g. high epistemic uncertainty), it cannot skip the question. MLE forces the model to distribute 100\% of its probability across the vocabulary, so it has to guess. Once it makes a wrong guess, the autoregressive setup makes things worse, as the guessed word is now part of the prompt. To keep the grammar correct, the rules of language limit what words can come next. So, the model builds a perfectly structured sentence and gives high probabilities to the rest of the words. It looks very confident, but it is really just confident about its grammar/syntax, hiding the fact that it did not know the fact to begin with. This leads to outputs that are "confidently incorrect" \cite{kadavath2022languagemodelsmostlyknow}.
+\end{itemize}
+
+\subsection*{Vulnerabilities to Input Ambiguities}
+
+Sometimes the uncertainty in the tokens doe not come from the model's lack of knowledge, but from the user's prompt. Prompts in natural language are often vague, which means they can be understood in different ways. 
+
+If a prompt is ambiguous, the LLM tries to cover all the possible meanings, which spreads out the output distribution. This adds aleatoric uncertainty from the input; the token probabilities become unpredictable just because the question wasn't clear, not because the model's knowledge base is missing something \cite{min-etal-2020-ambigqa}.
+
+\subsection*{Conclusion}
+
+Ttoken probabilities measure how well the model can string words together, not if the facts are true. Because of this, they are just not good enough to measure true uncertainty.
+
+% ------------------------------------------------------------------ %
+
+\newpage
+
+% ------------------------------------------------------------------ %
+
+\section{Disentangling Classification Uncertainty}
+
+% Make a comparison between the two uncertainty disentanglement formulations, considering the following factors: assumptions, and quality of uncertainty disentanglement, meaning making arguments on why these formulations might or might not work to disentangle aleatoric from epistemic uncertainty.
+
+The first formulation discussed in the lectures was the \textbf{Gaussian logits formulation}, which assumes that the logits of the classifier follow a Gaussian distribution. In this formulation, uncertainty is represented through the mean and covariance of the logits:
+
+\begin{equation*}
+z \sim \mathcal{N}(\mu, \Sigma)
+\end{equation*}
+
+where $z$ represents the logits, $\mu$ is the mean vector, and $\Sigma$ is the covariance matrix.
+
+The second formulation is based on \textbf{Mutual Information (MI)} and measures epistemic uncertainty through disagreement between predictions from different parameter samples:
+
+\begin{equation*}
+    I(Y;\Theta)
+    \approx
+    H\left[\mathbb{E}_{\Theta}[p(y|x,\theta)]\right]
+    -
+    \mathbb{E}_{\Theta}\left[H[p(y|x,\theta)]\right]
+\end{equation*}
+
+In this formulation,
+
+\begin{equation*}
+    H\left[\mathbb{E}_{\Theta}[p(y|x,\theta)]\right]
+\end{equation*}
+
+represents the \textbf{total uncertainty}, while
+
+\begin{equation*}
+    \mathbb{E}_{\Theta}\left[H[p(y|x,\theta)]\right]
+\end{equation*}
+
+represents the \textbf{aleatoric uncertainty}. The difference between the two is interpreted as \textbf{epistemic uncertainty}.
+
+\subsection*{Gaussian Logits Formulation}
+
+The \textbf{Gaussian Logits Formulation} assumes we can describe model uncertainty using normal Gaussian statistics. A positive about this is that it gives a clear statistical structure. Because it models the covariance between logits, it tries to cleanly separate aleatoric and epistemic uncertainty before the activation function.
+
+Unfortunately, this separation has two big problems in practice. First, the Gaussian assumption is usually too strict. Neural networks are very non-linear, and the real output distributions might be skewed or have multiple peaks. If it's not a true Gaussian, the uncertainty numbers get messed up. Second, and more importantly for classification, the logits have to go through a softmax function. Softmax squashes the values so they add up to 1. Because of this squashing, two totally different situations—a logit distribution with huge variance (high epistemic) and a logit distribution centred near zero with small variance (high aleatoric)—can both turn into the same flat probability output. This ruins the separation, making the disentanglement at the end pretty bad.
+
+\subsection*{Mutual Information Formulation}
+
+The \textbf{Mutual Information Formulation} works directly with the final probabilities instead. It looks at how much different model samples ($\Theta$) disagree. The entropy of the average prediction is the total uncertainty, and the average entropy of the individual predictions is the aleatoric uncertainty. Simply put, if the sampled models strongly disagree, the model doesn't know the answer (epistemic uncertainty). If the models are all uncertain but agree with each other, the uncertainty is in the data itself (aleatoric).
+
+A positive about this method is that it skips the softmax squashing problem completely and does not need the strict Gaussian assumption. It is also based on standard information theory. However, it relies heavily on one big assumption: that your sampled parameters $\Theta$ (e.g. from Deep Ensembles or Monte Carlo Dropout) actually represent the true model distribution. If your sampling method is bad and lacks diversity (mode collapse), all the models might confidently predict the same wrong answer. In that case, the models agree, so the method says there is zero epistemic uncertainty, even though the model is completely wrong. Also, since this is an approximation ($\approx$), it requires a lot of computing power. If you use too few samples, the uncertainty numbers will just be noisy and unreliable.
+
+\subsection*{Conclusion}
+
+In the end, neither method is perfect at disentangling uncertainty. The Gaussian logits method fails because of the non-linear softmax step, while the Mutual Information method is held back by how hard it is to get good, diverse model samples. In real deep learning tasks, both are just useful approximations, and you have to pick based on your specific network and how much computing power you have.
+
+% ------------------------------------------------------------------ %
+
+\newpage
+
+% ------------------------------------------------------------------ %
+
+\bibliography{assignment_2/references}
+
+\end{document}

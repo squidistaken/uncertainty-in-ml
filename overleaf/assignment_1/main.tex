@@ -1,0 +1,125 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage[a4paper, top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}
+
+\title{Assignment 1}
+\author{Maurice Meijer (S5480604) \\ Marcus Harald Olof Persson (S5343798) \\ Arthur Reuss (s5582253)}
+\date{\today}
+
+\bibliographystyle{plain}
+
+\begin{document}
+
+\maketitle
+
+\section{Uncertainty in Medical AI}
+
+The paper we chose is from MICCAI 2025 and is titled \textit{Finer Disentanglement of Aleatoric Uncertainty Can Accelerate Chemical Histopathology Imaging}. This paper proposes an adaptive strategy to accelerate digital tissue analysis workflows. Rather than acquiring high-resolution data immediately, the method quickly scans tissues at a low resolution and uses a novel technique to disentangle aleatoric uncertainty. This allows the model to selectively re-image only the specific regions where the higher quality data will actually solve the uncertainty \cite{OhJi_Finer_MICCAI2025}.
+
+Notably, the paper directly addresses aleatoric (data) uncertainty and effectively acts as an active learning framework guided by uncertainty quantification.
+
+\begin{enumerate}
+    \item \textbf{Machine Learning Task:} A 6-class segmentation task applied to infrared chemical images of breast cancer tissue microarrays. The primary goal is to categorise the pixels of the tissue image into different epithelial (Primary, protective, and avascular cell layer covering external skin and internal organs/cavities) and stromal (Connective tissue cells that provide structural support, create extracellular matrix, and maintain homeostasis in organs) tissue types.
+    \item \textbf{Uncertainty Estimation Method:} The authors use a post-hoc latent space analysis to examine the internal representations of the neural network after training. By evaluating latent space distances in low-information images, the model predicts whether a region's uncertainty can be mitigated by acquiring better data. This creates a selective "adaptive imaging" strategy that targets only critical regions for high-quality re-imaging, thereby conserving time and computational resources.
+    \item \textbf{Types of Uncertainty Modelled:} The framework models both epistemic and aleatoric uncertainty to distinguish between the model's lack of knowledge and the intrinsic fuzziness of the data itself. Epistemic Uncertainty (EU) is estimated using the Mahalanobis distance, a statistical method to measure how far a specific data point is from the centre of a cluster of data. Aleatoric Uncertainty (AU) is quantified using Shannon entropy, which measures the average uncertainty, surprise, or information content associated with a random variable's possible outcomes; this is strictly in regions with low EU. The main focus of the paper, however, is on disentangling the aleatoric uncertainty into two subcategories:
+    \begin{enumerate}
+        \item \textbf{Resolvable:} High-AU regions that can be fixed by gathering higher-information data.
+        \item \textbf{Irresolvable:} High-AU regions where better imaging will not help the task.
+    \end{enumerate}
+\end{enumerate}
+
+% ------------------------------------------------------------------ %
+
+\newpage
+
+% ------------------------------------------------------------------ %
+
+\section{Validating the Central Limit Theorem}
+
+\begin{enumerate}
+    \item \textbf{Explain in your own words and/or give intuitions on why the Central Limit Theorem justifies using Gaussian distributions frequently in uncertainty quantification via machine learning models.}
+\end{enumerate}
+
+The Central Limit Theorem (CLT) works as follows: If you take a bunch of independent random variables (outcomes from some random process) and you average them, then the average will start to look like it comes from a Gaussian distribution when repeated reccuringly. What is distinctive here is that the original variables do not have to be Gaussian at all; they can be skewed, discrete, or "messy", so long as they have a finite mean and variance. Still, once you start averaging, the distribution of the averages becomes more and more “normalised” in the Gaussian sense.
+
+A Gaussian distribution itself is just a bell-shaped curve, defined by a mean and a variance, see Figure \ref{fig:Gaussian Distribution}.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\linewidth]{assignment_1/Gaussian Distribution.png}
+    \caption{Gaussian Distribution}
+    \label{fig:Gaussian Distribution}
+\end{figure}
+
+The idea that connects the two is this fact that it works around averaging/ working with the mean. Many things we deal with are not just single random events, but combinations of multiple smaller effects. The CLT tells us that as soon as averaging is involved, Gaussian behavior can “emerge,” even if it was not present in the beginning.
+
+For example: A six-sided die. If we roll a fair (non-weighted) dice once, the outcome is uniformly distributed between 1 and 6, which is clearly not Gaussian. But if we roll the dice many times and take the average, eventually,  the distribution of the mean becomes smoother and more centered around 3.5, see Equation \ref{eq:die}. Eventually it starts to look like a bell curve.
+
+\begin{equation}
+    \mu = \sum_{i=1}^{6} i \cdot \frac{1}{6}
+    = \frac{1+2+3+4+5+6}{6}
+    = \frac{21}{6}
+    = 3.5
+    \label{eq:die}
+\end{equation}
+
+What is interesting is that this also works for an unfair (weighted) die. Suppose that the number one has a probability of 0.5 to become it, and the rest is equally divided to make up 1, so the distribution of a single throw is skewed. if we again look at the average of multiple throws, we still end up with something that appear Gaussian. The only real difference is that the mean shifts to a value of 2.5, see Equation \ref{eq:unfair_die}. So, even though the underlying process is biased, the averaging still pushes us toward a bell-shaped distribution.
+
+\begin{equation}
+\mu = 1 \cdot 0.5 + (2+3+4+5+6)\cdot 0.1
+= 0.5 + 20 \cdot 0.1
+= 0.5 + 2
+= 2.5
+\label{eq:unfair_die}
+\end{equation}
+
+This works because every probability distribution has its extremes and a centre, and that repeated averaging emphasises the centre while smoothing out the extremes.
+
+Relating this back to uncertainty quantification in machine learning, this provides a good intuition for why Gaussian distributions are used so often. Predictions in models are usually not coming from a single clean source, but rather from a combination of many small contributions, such as features, noise, or parameter uncertainty. The final prediction, or the uncertainty of the model, can be interpreted as something coming from averaging or aggregating the effects.
+
+Because of the CLT, it then makes sense that this aggregated uncertainty often looks approximately Gaussian. So, even if the individual components are complicated or not well-behaved, the overall uncertainty can still be modelled and interpreted quite well with a Gaussian distribution.
+
+\begin{enumerate}[resume]
+    \item \textbf{When might the assumptions made by the Central Limit Theorem be broken? Given at least one concrete example.}
+\end{enumerate}
+
+A clear situation where the assumptions behind the Central Limit Theorem break down is when the underlying random variables do not have a finite variance. A concrete and often-cited example of this is the Cauchy distribution.
+
+The Cauchy distribution is quite unusual compared to something like a Gaussian. It has very heavy tails, which means that extreme values occur much more frequently. Because of this, neither the mean nor the variance is well-defined. This ignores the requirement of the CLT, namely that the variables we average should have a finite mean and variance.
+
+Now, if we try to repeat the same experiment as with the dice, the behaviour will change. Suppose we draw samples from a Cauchy distribution and compute their average. Intuitively, we might expect that, as we increase the number of samples, the average should “settle down” and appear to resemble a Gaussian distribution. However, this does not happen, rather, the sample mean remains highly unstable, and its distribution is still Cauchy. In simple terms, averaging does not smooth things out in this case.
+
+\begin{equation}
+\bar{X}_n = \frac{X_1 + X_2 + \cdots + X_n}{n}
+\label{eq:cauchy}
+\end{equation}
+
+ Equation \ref{eq:cauchy} shows why the problem occurs. Although we divide by \textit{$n$}, the numerator can still be dominated by one extremely large value \textit{$X_n$}. In a Cauchy distribution, such extreme \textit{$X_n$} are common enough that $\bar{X}_n$ does not stabilise, meaning the average does not “smooth” or become Gaussian even as $n$ grows. As a consequence, the “averaging effect” that drives the CLT fails.
+
+This example where the CLT breaks is already quite known, a sWilliam Feller already discussed in 1971 that the CLT requires finite variance, and that distributions like the Cauchy form an important counterexample where normalised sums do not converge to a Gaussian but instead remain in the same family of stable distributions \cite{feller1971probability}. So, if the finite-variance assumption is violated, the intuition of the CLT can break down.
+
+Another fundamental assumption of the standard CLT is that the random variables must be independent; the outcome of one event should not dictate or influence the outcome of another. When this assumption is violated, specifically when variables are highly correlated, the averaging effect of the CLT can also break down.
+
+A practical example of this is the spread of a disease within a community. Suppose we define a random variable $X_i$ for each person in a population, representing whether they catch a virus ($1$ for yes, $0$ for no). If these variables were truly independent, the average number of infected people would smoothly approximate a Gaussian distribution as the population size grew. 
+
+However, infections are inherently dependent. If one person catches the virus, the probability of their family members or coworkers catching it drastically increases. Because of this strong positive correlation, the random variables are tightly coupled. Instead of individual outcomes cancelling out to form a predictable, centralised average (as seen with independent dice rolls), the community will likely experience extreme, polarised outcomes; either the virus is contained early and almost no one gets sick, or an outbreak occurs and nearly everyone gets sick. 
+
+Mathematically, when variables are highly positively correlated, the variance of their sum does not scale steadily as it does with independent variables. The covariance terms between the individual variables $X_i$ and $X_j$ remain large and fail to vanish, as shown in Equation \ref{eq:variance_sum}.
+
+\begin{equation} \label{eq:variance_sum}
+    \text{Var}\left(\sum_{i=1}^{n} X_i\right) = \sum_{i=1}^{n} \text{Var}(X_i) + 2 \sum_{1 \le i < j \le n} \text{Cov}(X_i, X_j)
+\end{equation}
+
+In an independent system, the covariance term is zero. But in our disease model, the covariance is large and positive. This causes the total variance to balloon, preventing the sample mean from stabilizing. As a result, the distribution of the average infection rate often becomes heavily skewed, fat-tailed, or even bimodal, demonstrating clearly that the Gaussian approximation no longer holds when independence is broken.
+
+% ------------------------------------------------------------------ %
+
+\newpage
+
+% ------------------------------------------------------------------ %
+
+\bibliography{assignment_1/references}
+
+\end{document}

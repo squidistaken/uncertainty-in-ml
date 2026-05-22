@@ -1,0 +1,54 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage[a4paper, top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}
+
+\title{Assignment 3 - Proposal\\
+S\&P 500 Forecasting and Risk Quantification using Gaussian Processes}
+\author{Maurice Meijer (S5480604) \\ Marcus Harald Olof Persson (S5343798) \\ Arthur Reuss (S5582253)}
+\date{\today}
+
+\bibliographystyle{plain}
+
+\begin{document}
+
+\maketitle
+
+\section*{Project}
+
+\begin{itemize}
+    \item \textbf{Type:} Time-series forecasting with probabilistic uncertainty estimation.
+    \item \textbf{Task:} Predict the next-day log returns of the S\&P 500 and isolate the predictive variance into uncertainty streams to quantify market risk.
+    \item \textbf{Dataset:} S\&P 500 stock price index (1993 - 2024), from Kaggle \cite{sp500}. We will use chronological data splitting to prevent look-ahead bias.
+    \item \textbf{Models:} We will develop two models, using PyTorch/GPyTorch \cite{gardner2021gpytorchblackboxmatrixmatrixgaussian}.
+    \begin{enumerate}
+        \item \textbf{Baseline Model:} A deterministic Long Short-Term Memory (LSTM) network to establish a benchmark for standard deep learning point-prediction accuracy.
+        \item \textbf{Proposed Model:} An approximate Gaussian Process regression model utilising variational inference and learned inducing points to provide scalable, computationally feasible uncertainty estimation.
+    \end{enumerate}
+    \item \textbf{Evaluation Metrics:}
+    \begin{itemize}
+        \item \textbf{Point-Prediction Accuracy:} Mean Squared Error (MSE) to measure the average squared deviation of predicted values from actual log returns, to serve as an improper scoring benchmark, and Mean Absolute Percentage Error (MAPE) to quantify forecasting errors, providing an interpretable indication of prediction accuracy.
+        \item \textbf{Uncertainty Calibration and Quality:} Gaussian Negative Log-Likelihood (NLL) to evaluate the predictive distribution's holistic performance as a proper scoring rule, and Expected Calibration Error (ECE) to measure the overall miscalibration gap.
+    \end{itemize}
+\end{itemize}
+
+\section*{Motivation}
+
+Financial asset prices, such as the S\&P 500, are driven by constant market noise and sudden macroeconomic shifts. When modelling for high-stakes financial decision-making, an overconfident model making an inaccurate prediction provides a false sense of security, which represents the worst-case scenario where high confidence misleads the end user and can lead to catastrophic capital loss during sudden market liquidations. To build a dependable and risk-aware system, a model's predicted error must be directly proportional to its output uncertainty; traditional deep learning architectures used for financial forecasting optimise for point predictions using standard metrics, which act as improper scoring rules because they completely ignore output distribution characteristics.  
+
+We discussed the project task of time-series forecasting with probabilistic uncertainty estimation with our TA, Matthijs van der Lende, and he proposed that we investigate and leverage Gaussian Processes for our proposed model using GPyTorch. GPs are a non-parametric Bayesian framework that defines a prior distribution over functions, where any finite collection of data points follows a joint multivariate Gaussian distribution \cite{10.7551/mitpress/3206.001.0001}. This framework allows the model to output the parameters of a Gaussian distribution (predictive mean and variance). Under a proper scoring rule such as Gaussian NLL, if the model is uncertain (large variance), then the squared error is ignored, but the logarithm of variance counteracts this effect, whereas if the model is certain (small variance), the opposite effect occurs. This mathematical balancing mechanism prevents the network from being penalised excessively during periods of unprecedented market volatility while strictly punishing overconfidence during stable regimes.  
+
+\section*{Procedure}
+\begin{enumerate}[label=\arabic*.]
+    \item \textbf{Data Preprocessing:} We will convert the raw daily closing prices into log returns to ensure statistical stationarity, which is required for effective Gaussian Process modelling. The data will be structured into sliding lookback windows (e.g., 30 days of historical returns) to predict the $t+1$ return. To prevent data leakage, we will strictly use chronological splitting: Training (1993--2016), Validation (2017--2020), and Testing (2021--2024).
+    \item \textbf{Model Implementation:} We will implement a standard LSTM network using PyTorch to serve as our deterministic baseline. Simultaneously, we will build an approximate Variational Gaussian Process using GPyTorch. To handle the computational complexity of the $\sim$7,500 trading days, we will utilise set of learned inducing points to compress the temporal data into a scalable matrix structure.
+    \item \textbf{Training and Optimisation:} The LSTM will be trained using standard backpropagation with Mean Squared Error (MSE) as the loss function. The Variational GP will be optimised by maximising the Evidence Lower Bound (ELBO), which implicitly minimises the Negative Log-Likelihood (NLL). During this phase, the GP will learn its kernel hyperparameters (lengthscale and outputscale) and the optimal placement of its inducing points.
+    \item \textbf{Evaluation and Visualization:} Both models will be evaluated on the hold-out test set using our defined point-prediction metrics (MSE, MAPE). The GP's uncertainty quantification will be rigorously assessed using NLL and ECE. Finally, we will visualize the predictions by plotting the GP's predictive mean overlaid with its $2\sigma$ (95\% confidence) variance bands against the actual market returns to visually inspect its behaviour during volatile market regimes.
+\end{enumerate}
+
+\newpage
+
+\bibliography{assignment_3/proposal/references}
+
+\end{document}
