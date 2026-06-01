@@ -1,6 +1,7 @@
 import logging
 import sys
 from datetime import datetime
+from typing import Any
 
 
 class Logger:
@@ -21,7 +22,7 @@ class Logger:
             name: The name of the logger
 
         Returns:
-            A configured logger instance
+            logging.Logger: A configured logger instance
         """
         from src.constants import LOGS_DIR
 
@@ -41,7 +42,7 @@ class Logger:
         )
 
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)  # Log INFO and above to console
+        console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
@@ -54,7 +55,7 @@ class Logger:
 
         return logger
 
-    def __getattr__(self, name: str) -> logging.Logger:
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the underlying logger.
 
         Args:

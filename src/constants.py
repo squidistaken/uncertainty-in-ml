@@ -1,6 +1,7 @@
 from pathlib import Path
 from src.utils.logger import Logger
 import yaml
+import torch
 
 ROOT_DIR = Path(__file__).parent.parent
 
@@ -14,3 +15,10 @@ LOGS_DIR = ROOT_DIR / Path(paths["logs"])
 RESULTS_DIR = ROOT_DIR / Path(paths["results"])
 DEBUG = data["debug"]
 LOGGER = Logger("uml")
+DEVICE = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
