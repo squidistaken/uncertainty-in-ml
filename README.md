@@ -20,6 +20,8 @@ uv sync
 uv run -m src.data.download_data [--force]
 ```
 
+Alternative: Download the data and place it in `<DATA_DIR>/raw/`.
+
 ### Preprocessing
 ```bash
 uv run -m src.data.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
