@@ -13,7 +13,7 @@ class SPYDataset(Dataset):
         split: Literal["train", "val", "test"] = "train",
         device: Union[str, torch.device] = "cpu",
     ) -> None:
-        """Initialise the dataset
+        """Initialise the class.
 
         Args:
             split (Literal["train", "val", "test], optional): The data split to
