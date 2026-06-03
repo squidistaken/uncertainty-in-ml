@@ -1,28 +1,42 @@
 # UML: S&P 500 Forecasting and Risk Quantification using Gaussian Processes
 
-This project aims to predict the next-day log returns of the S&P 500 index and quantify market risk using Gaussian Processes. It is part of the Uncertainty in Machine Learning course at the University of Groningen.
+Repository for the Uncertainty in Machine Learning course (WBAI065-05) at the University of Groningen.
 
 ## Development
 
+We use [uv](https://docs.astral.sh/uv/) for project management.
 1. Clone the project.
-2. We use uv for package management.
+2. Synchronise the project.
 
 ```bash
 uv sync
 ```
-3. Clone [example.config.yaml](example.config.yaml) as `config.yaml`. Modify the configuration, if needed.
-4. Set up a Kaggle API token on your device (for downloading data): https://kaggle.com/settings/api
+3. Create a copy of [example.config.yaml](example.config.yaml) and rename it to config.yaml. Update the configuration, if desired.
 
-## CLI
+## Command Line Interface (CLI)
+
+The project can be run via a CLI, for convenient usage and testing.
 
 ### Downloading Data
+
+#### Option 1: Download Script Using Kaggle API
+
 ```bash
 uv run -m src.data.download_data [--force]
 ```
+ * `--force`: Forces a redownload of the data, in the event of missing or corrupted raw data. Defaults to `False`. 
 
-Alternative: Download the data and place it in `<DATA_DIR>/raw/`: https://www.kaggle.com/datasets/yousefeddin/s-and-p-500-stock-price-end-of-2024
+This requires a Kaggle API token to be set up: https://www.kaggle.com/settings/api
 
-### Preprocessing
+#### Option 2: Manual Download
+
+Dataset: https://www.kaggle.com/datasets/yousefeddin/s-and-p-500-stock-price-end-of-2024
+
+ * Extract the archive and place the `.csv` file in the directory `<DATA_DIR>/raw/`
+
+### Preprocessing and Feature Engineering
+
 ```bash
 uv run -m src.features.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
 ```
+

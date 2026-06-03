@@ -57,10 +57,6 @@ class SPYDataset(Dataset):
             data["time_idx"], dtype=torch.float32, device=self.device
         )
 
-        LOGGER.info(
-            f"{split.capitalize()} dataset loaded. X shape: {self.X.shape}, y shape: {self.y.shape}"
-        )
-
     def __len__(self) -> int:
         """Get the length of the dataset.
 

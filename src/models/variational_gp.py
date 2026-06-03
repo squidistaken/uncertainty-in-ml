@@ -1,10 +1,12 @@
 from pathlib import Path
 import torch
 import gpytorch
+import numpy as np
 from torch.utils.data import DataLoader
 from src.models.base_model import BaseModel
 from src.constants import DEVICE
 from typing import Any, Optional, cast, Sized
+from src.utils.scaling import SPYScaler
 
 
 class SPYVariationalGP(gpytorch.models.ApproximateGP):
@@ -39,7 +41,7 @@ class SPYVariationalGP(gpytorch.models.ApproximateGP):
 
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.RBFKernel()
+            gpytorch.kernels.MaternKernel(nu=1.5)
         )
 
     def forward(
@@ -81,6 +83,9 @@ class VariationalGP(BaseModel):
 
         self.model = SPYVariationalGP(inducing_points).to(DEVICE)
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood().to(DEVICE)
+        self.optimizer: Optional[torch.optim.Optimizer] = None
+        self.mll: Optional[gpytorch.mlls.VariationalELBO] = None
+        self.scaler = SPYScaler()
 
     def _flatten_input(self, x: torch.Tensor) -> torch.Tensor:
         """Format sequences for the GP."""
@@ -115,7 +120,7 @@ class VariationalGP(BaseModel):
 
     def backward_pass(
         self, x_train: DataLoader, y_train: Optional[Any] = None, **kwargs: Any
-    ) -> list[float]:
+    ) -> float:
         """
         Train the model on the provided data.
 
@@ -123,64 +128,64 @@ class VariationalGP(BaseModel):
             x_train (DataLoader): The training data sequences.
             y_train (Optional[Any], optional): The training targets. Defaults to None.
             **kwargs: The configuration.
+
+        Returns:
+            float: An average ELBO loss over the training epoch.
         """
-        epochs = kwargs.get("epochs", 50)
         lr = kwargs.get("lr", 0.01)
 
         self.model.train()
         self.likelihood.train()
 
-        optimiser = torch.optim.Adam(
-            [
-                {"params": self.model.parameters()},
-                {"params": self.likelihood.parameters()},
-            ],
-            lr=lr,
-        )
+        if self.optimizer is None:
+            self.optimizer = torch.optim.Adam(
+                [
+                    {"params": self.model.parameters()},
+                    {"params": self.likelihood.parameters()},
+                ],
+                lr=lr,
+            )
 
-        # Loss function: Negative Variational ELBO.
-        num_data = cast(Sized, x_train.dataset)
-        mll = gpytorch.mlls.VariationalELBO(
-            self.likelihood, self.model, num_data=len(num_data)
-        )
+        if self.mll is None:
+            num_data = cast(Sized, x_train.dataset)
+            self.mll = gpytorch.mlls.VariationalELBO(
+                self.likelihood, self.model, num_data=len(num_data)
+            )
 
-        loss_history = []
+        epoch_loss = 0.0
 
-        for _ in range(epochs):
-            epoch_loss = 0.0
+        for batch_x, batch_y, _ in x_train:
+            batch_x = self._flatten_input(batch_x).to(DEVICE)
+            batch_y = batch_y.to(DEVICE)
 
-            for batch_x, batch_y, _ in x_train:
-                batch_x = self._flatten_input(batch_x).to(DEVICE)
-                batch_y = batch_y.to(DEVICE)
+            self.optimizer.zero_grad()
+            output = self.model(batch_x)
 
-                optimiser.zero_grad()
-                output = self.model(batch_x)
+            loss_tensor = cast(torch.Tensor, self.mll(output, batch_y))
+            loss = -loss_tensor
+            loss.backward()
 
-                loss_tensor = cast(torch.Tensor, mll(output, batch_y))
-                loss = -loss_tensor
-                loss.backward()
+            self.optimizer.step()
 
-                optimiser.step()
+            epoch_loss += loss.item()
 
-                epoch_loss += loss.item()
+        avg_loss = epoch_loss / len(x_train)
 
-            avg_loss = epoch_loss / len(x_train)
-            loss_history.append(avg_loss)
-
-        return loss_history
+        return avg_loss
 
     def evaluate(
         self, x_test: DataLoader, y_test: torch.Tensor
     ) -> dict[str, float]:
         """
-        Test the performance of the model.
+        Test the performance of the model. Metric evaluation is computed
+        in the mathematically and financially correct unscaled space.
 
         Args:
             x_test (DataLoader): The testing data features.
             y_test (torch.Tensor): The testing data true targets.
 
         Returns:
-            Any: A metric(s) indicating the performance.
+            dict[str, float]: Computed metric values.
         """
         self.model.eval()
         self.likelihood.eval()
@@ -199,33 +204,38 @@ class VariationalGP(BaseModel):
                 all_vars.append(predictive_dist.variance)
                 all_targets.append(batch_y)
 
-        # We concatenate arrays for globally accurate and unbiased metric
-        # calculations.
         means = torch.cat(all_means, dim=0)
         variances = torch.cat(all_vars, dim=0)
         stds = torch.sqrt(variances)
         targets = torch.cat(all_targets, dim=0)
+        means_np = means.cpu().numpy()
+        targets_np = targets.cpu().numpy()
 
-        # Point Metrics:
-        # 1. Mean Squared Error (MSE).
-        # 2. Mean Absolute Percentage Error (MAPE).
-        mse = torch.nn.functional.mse_loss(means, targets).item()
+        # Unscale model outputs back to raw log percentage returns
+        raw_means = self.scaler.inverse_transform_predictions(means_np)
+        raw_targets = self.scaler.inverse_transform_predictions(targets_np)
+
+        # Point Metrics (Evaluated in unscaled raw percentage returns space)
+        # 1. Mean Squared Error (MSE)
+        mse = np.mean((raw_means - raw_targets) ** 2)
+        # 2. Mean Absolute Percentage Error (MAPE)
         mape = (
-            torch.mean(torch.abs((means - targets) / (targets + 1e-8))).item()
+            np.mean(np.abs((raw_means - raw_targets) / (raw_targets + 1e-8)))
             * 100
         )
 
-        # Probabilistic Metrics:
-        # 1. Negative Log-Likelihood (NLL).
-        # 2. Expected Calibration Error (ECE).
-        normal_dist = torch.distributions.Normal(means, stds)
-        nll = -normal_dist.log_prob(targets).mean().item()
+        # Probabilistic Metrics
+        # 1. Negative Log-Likelihood (NLL)
+        scaled_normal_dist = torch.distributions.Normal(means, stds)
+        nll_scaled = -scaled_normal_dist.log_prob(targets).mean().item()
+        nll = nll_scaled + np.log(self.scaler.scale)
+
+        # 2. Expected Calibration Error (ECE)
         p_levels = torch.linspace(0.01, 0.99, 99, device=DEVICE)
 
-        # We setup a Guassian Unit to derive symmetric quantities.
         unit_normal = torch.distributions.Normal(
-            torch.tensor([0.0], device=DEVICE),
-            torch.tensor([1.0], device=DEVICE),
+            torch.tensor(0.0, device=DEVICE),
+            torch.tensor(1.0, device=DEVICE),
         )
 
         abs_errs = []
@@ -236,8 +246,6 @@ class VariationalGP(BaseModel):
             lower_bound = means - z * stds
             upper_bound = means + z * stds
 
-            # This is the true fraction of targets falling within the prediction
-            # interval.
             observed_coverage = (
                 ((targets >= lower_bound) & (targets <= upper_bound))
                 .float()
@@ -247,7 +255,12 @@ class VariationalGP(BaseModel):
 
         ece = torch.tensor(abs_errs).mean().item()
 
-        metrics = {"MSE": mse, "MAPE": mape, "NLL": nll, "ECE": ece}
+        metrics = {
+            "MSE": float(mse),
+            "MAPE": float(mape),
+            "NLL": float(nll),
+            "ECE": float(ece),
+        }
 
         return metrics
 

@@ -45,8 +45,9 @@ class SPYPreprocessor:
         LOGGER.info("Handling dividends...")
 
         if "Dividends" in df.columns:
+            clean_dividends = df["Dividends"].fillna(0.0)
             df["Log_Return"] = np.log(
-                (df["Close"] + df["Dividends"]) / df["Close"].shift(1)
+                (df["Close"] + clean_dividends) / df["Close"].shift(1)
             )
         else:
             df["Log_Return"] = np.log(df["Close"] / df["Close"].shift(1))
@@ -61,6 +62,30 @@ class SPYPreprocessor:
 
         return df
 
+    def _add_volatility_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate engineered volatility features based on Scaled_Log_Return.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing Scaled_Log_Return.
+
+        Returns:
+            pd.DataFrame: A DataFrame with added feature columns.
+        """
+        df = df.copy()
+
+        LOGGER.info("Calculating absolute scaled returns...")
+        df["Abs_Log_Return"] = df["Scaled_Log_Return"].abs()
+
+        LOGGER.info("Calculating 5-day rolling volatility...")
+        df["Vol_5d"] = df["Scaled_Log_Return"].rolling(window=5).std()
+
+        LOGGER.info("Calculating 21-day rolling volatility...")
+        df["Vol_21d"] = df["Scaled_Log_Return"].rolling(window=21).std()
+
+        LOGGER.info("Dropping initial rows with NaN rolling metrics...")
+        df = df.dropna().reset_index(drop=True)
+        return df
+
     def _create_sequences(
         self, df: pd.DataFrame
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -68,35 +93,45 @@ class SPYPreprocessor:
         subsequent step.
 
         Args:
-            data (np.ndarray): The input data.
+            df (pd.DataFrame): The input data containing engineered features.
 
         Returns:
-            tuple[np.ndarray, np.ndarray]: A tuple containing the sequences of
-                                           X and y.
+            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: A tuple containing:
+                - X: array of shape [N, window_size, 4]
+                - y: array of shape [N]
+                - dates: array of timestamps
+                - time_indices: array of raw index values
         """
         X, y, dates, time_indices = [], [], [], []
-        values = df["Scaled_Log_Return"].values
+
+        feature_cols = [
+            "Scaled_Log_Return",
+            "Abs_Log_Return",
+            "Vol_5d",
+            "Vol_21d",
+        ]
+        feature_values = df[feature_cols].values
+        target_values = df["Scaled_Log_Return"].values
         date_vals = df["Date"].values
         t_idx_vals = df["Time_Index"].values
 
         for i in range(len(df) - self.window_size):
-            X.append(values[i : i + self.window_size])
-            y.append(values[i + self.window_size])
+            X.append(feature_values[i : i + self.window_size])
+            y.append(target_values[i + self.window_size])
             dates.append(date_vals[i + self.window_size])
             time_indices.append(t_idx_vals[i + self.window_size])
 
-        # LSTMs require a 3D tensor, while GPs only need a 2D tensor.
-        X = np.array(X)[..., np.newaxis]
+        X = np.array(X)
         y = np.array(y)
 
         if DEBUG:
-            LOGGER.debug(f"X shape: {np.array(X).shape}")
-            LOGGER.debug(f"y shape: {np.array(y).shape}")
+            LOGGER.debug(f"X shape: {X.shape}")
+            LOGGER.debug(f"y shape: {y.shape}")
 
         return X, y, np.array(dates), np.array(time_indices)
 
     def run(self) -> None:
-        """RUn the pipeline."""
+        """Run the pipeline."""
         output_dir = DATA_DIR / "processed"
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +144,9 @@ class SPYPreprocessor:
         self.scaler.fit(train_returns)
 
         df["Scaled_Log_Return"] = self.scaler.transform(df[["Log_Return"]])
+
+        LOGGER.info("Applying volatility feature engineering...")
+        df = self._add_volatility_features(df)
 
         LOGGER.info(
             f"Creating sequences with window size {self.window_size}..."

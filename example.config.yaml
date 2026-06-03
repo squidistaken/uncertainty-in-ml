@@ -4,3 +4,7 @@ paths:
   logs: "logs"
   results: "results"
 debug: False
+seed: 33
+kaggle:
+  username: "YOUR_KAGGLE_USERNAME"
+  key: "YOUR_KAGGLE_KEY"
