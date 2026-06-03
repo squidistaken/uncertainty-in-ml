@@ -10,7 +10,7 @@ This project aims to predict the next-day log returns of the S&P 500 index and q
 ```bash
 uv sync
 ```
-3. Clone [example.config.yaml][example.config.yaml] as `config.yaml`. Modify the configuration, if needed.
+3. Clone [example.config.yaml](example.config.yaml) as `config.yaml`. Modify the configuration, if needed.
 4. Set up a Kaggle API token on your device (for downloading data): https://kaggle.com/settings/api
 
 ## CLI
