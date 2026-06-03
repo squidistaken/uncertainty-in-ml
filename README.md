@@ -20,7 +20,7 @@ uv sync
 uv run -m src.data.download_data [--force]
 ```
 
-Alternative: Download the data and place it in `<DATA_DIR>/raw/`.
+Alternative: Download the data and place it in `<DATA_DIR>/raw/`: https://www.kaggle.com/datasets/yousefeddin/s-and-p-500-stock-price-end-of-2024
 
 ### Preprocessing
 ```bash
