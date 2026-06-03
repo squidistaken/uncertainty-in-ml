@@ -24,5 +24,5 @@ Alternative: Download the data and place it in `<DATA_DIR>/raw/`: https://www.ka
 
 ### Preprocessing
 ```bash
-uv run -m src.data.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
+uv run -m src.features.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
 ```
