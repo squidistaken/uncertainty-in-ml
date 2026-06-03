@@ -11,6 +11,7 @@ We use [uv](https://docs.astral.sh/uv/) for project management.
 ```bash
 uv sync
 ```
+
 3. Create a copy of [example.config.yaml](example.config.yaml) and rename it to config.yaml. Update the configuration, if desired.
 
 ## Command Line Interface (CLI)
@@ -38,5 +39,25 @@ Dataset: https://www.kaggle.com/datasets/yousefeddin/s-and-p-500-stock-price-end
 
 ```bash
 uv run -m src.features.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
+```
+
+## Training 
+
+```bash
+uv run -m src.train.train_model --model [--epochs] [--lr] [--batch-size] [--num-inducing] [--patience] [--monitor] [--seed]
+```
+ * `--model`: The model: `["lstm", "vgp", "variational_gp"]`. Required.
+ * `--epochs`: The number of epochs to train. Defaults to 100.
+ * `--lr`: The initial learning rate. Defaults to 0.001.
+ * `--batch-size`: The training batch size. Defaults to 32.
+ * `--num-inducing`: The number of inducing points. Exclusive for Variational GP. Defaults to 10.
+ * `--patience`: The number of epochs to wait for early stopping. Defaults to 10.
+ * `--monitor`: The validation metric to track for early stopping: `["RMSE", "NLL", "ECE", "Hit_Rate"]`. Defaults to "NLL."
+ * `--seed`: The deterministic seed value to apply. Defaults to `SEED`.
+
+## Tensorboard Dashboard
+
+```bash
+tensorboard --logdir logs/tensorboard
 ```
 

@@ -215,16 +215,14 @@ class VariationalGP(BaseModel):
         raw_means = self.scaler.inverse_transform_predictions(means_np)
         raw_targets = self.scaler.inverse_transform_predictions(targets_np)
 
-        # Point Metrics (Evaluated in unscaled raw percentage returns space)
-        # 1. Mean Squared Error (MSE)
-        mse = np.mean((raw_means - raw_targets) ** 2)
-        # 2. Mean Absolute Percentage Error (MAPE)
-        mape = (
-            np.mean(np.abs((raw_means - raw_targets) / (raw_targets + 1e-8)))
-            * 100
-        )
+        # Financial & Point Metrics:
+        # 1. Root Mean Squared Error (RMSE)
+        rmse = np.sqrt(np.mean((raw_means - raw_targets) ** 2))
 
-        # Probabilistic Metrics
+        # 2. Hit Rate/Directional Accuracy
+        hit_rate = np.mean(np.sign(raw_means) == np.sign(raw_targets)) * 100
+
+        # Probabilistic Metrics:
         # 1. Negative Log-Likelihood (NLL)
         scaled_normal_dist = torch.distributions.Normal(means, stds)
         nll_scaled = -scaled_normal_dist.log_prob(targets).mean().item()
@@ -256,8 +254,8 @@ class VariationalGP(BaseModel):
         ece = torch.tensor(abs_errs).mean().item()
 
         metrics = {
-            "MSE": float(mse),
-            "MAPE": float(mape),
+            "RMSE": float(rmse),
+            "Hit_Rate": float(hit_rate),
             "NLL": float(nll),
             "ECE": float(ece),
         }

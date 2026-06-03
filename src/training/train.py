@@ -71,8 +71,8 @@ def main() -> None:
     parser.add_argument(
         "--lr",
         type=float,
-        default=0.001,
-        help="The initial learning rate. Defaults to 0.001.",
+        default=0.01,
+        help="The initial learning rate. Defaults to 0.01.",
     )
     parser.add_argument(
         "--batch-size",
@@ -84,7 +84,7 @@ def main() -> None:
         "--num-inducing",
         type=int,
         default=100,
-        help="[Exclusive for Variational GP] The number of inducing points to use. Defaults to 100.",
+        help="[Exclusive for Variational GP] The number of inducing points. Defaults to 100.",
     )
     parser.add_argument(
         "--patience",
@@ -95,8 +95,8 @@ def main() -> None:
     parser.add_argument(
         "--monitor",
         type=str,
-        default="MSE",
-        choices=["MSE", "NLL", "ECE", "MAPE"],
+        default="NLL",
+        choices=["RMSE", "NLL", "ECE", "Hit_Rate"],
         help="The validation metric to track for early stopping. Defaults to 'NLL'.",
     )
     parser.add_argument(
@@ -160,7 +160,14 @@ def main() -> None:
         device=DEVICE,
     )
 
-    trainer.train(epochs=args.epochs, lr=args.lr)
+    trainer.train(
+        epochs=args.epochs,
+        lr=args.lr,
+        patience=args.patience,
+        monitor=args.monitor,
+    )
+
+    LOGGER.info("Plotting training loss history...")
     trainer.plot_history()
 
     val_metrics = trainer.evaluate(use_test=False)

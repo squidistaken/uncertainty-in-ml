@@ -57,9 +57,9 @@ class Trainer:
     def train(
         self,
         epochs: int = 100,
-        lr: float = 0.001,
+        lr: float = 0.01,
         patience: int = 10,
-        monitor: Literal["MSE", "NLL", "ECE", "MAPE"] = "NLL",
+        monitor: Literal["RMSE", "NLL", "ECE", "Hit_Rate"] = "NLL",
     ) -> list[float]:
         """Execute the model training.
 
@@ -68,7 +68,7 @@ class Trainer:
             lr (float): The learning rate. Defaults to 0.01.
             patience (Optional[int]): The number of epochs to wait for
                                       early stopping. Defaults to 10.
-            monitor (Literal["MSE", "NLL", "ECE", "MAPE"]): The validation
+            monitor (Literal["RMSE", "NLL", "ECE", "Hit_Rate"]): The validation
                                                             metric to track for
                                                             early stopping.
                                                             Defaults to 'NLL'.
@@ -83,7 +83,12 @@ class Trainer:
             )
 
         loss_history = []
-        best_score = float("inf")
+
+        # Adjust best starting score based on whether higher is better or lower
+        # is better.
+        higher_is_better = monitor in ["Hit_Rate"]
+        best_score = float("-inf") if higher_is_better else float("inf")
+
         patience_counter = 0
         best_model_state = None
         best_likelihood_state = None
@@ -101,13 +106,26 @@ class Trainer:
             LOGGER.info(
                 f"Epoch {epoch + 1:02d}/{epochs:02d} | "
                 f"Train Loss: {epoch_loss:.6f} | "
-                f"Val MSE: {val_metrics['MSE']:.6f} | "
-                f"Val ECE: {val_metrics['ECE']:.6f}"
+                f"Val NLL: {val_metrics['NLL']:.6f} | "
+                f"Val ECE: {val_metrics['ECE']:.6f} | "
+                f"Val RMSE: {val_metrics['RMSE']:.6f} | "
+                f"Val Hit Rate: {val_metrics['Hit_Rate']:.2f}%"
             )
 
             if patience is not None:
-                current_score = val_metrics.get(monitor, float("inf"))
-                if current_score < best_score:
+                current_score = val_metrics.get(
+                    monitor, float("-inf") if higher_is_better else float("inf")
+                )
+
+                # Check for improvement dynamically based on metric
+                # directionality.
+                is_improvement = (
+                    (current_score > best_score)
+                    if higher_is_better
+                    else (current_score < best_score)
+                )
+
+                if is_improvement:
                     best_score = current_score
                     patience_counter = 0
 
@@ -162,7 +180,7 @@ class Trainer:
                 load_state_dict_fn(best_model_state)
 
             LOGGER.info(
-                f"Restored best weights from validation epoch with lowest {monitor}: {best_score:.6f}"
+                f"Restored best weights from validation epoch with best {monitor}: {best_score:.6f}"
             )
 
         LOGGER.info("Training complete.")
