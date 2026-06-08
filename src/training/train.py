@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from src.constants import LOGGER, DEVICE, RESULTS_DIR, MODELS_DIR, SEED
 from src.data.dataset import SPYDataset
 from src.models.variational_gp import VariationalGP
+from src.models.lstm_model import LSTMModel
 from src.training.trainer import Trainer
 from sklearn.cluster import KMeans
 
@@ -145,8 +146,18 @@ def main() -> None:
             lr=args.lr,
             num_inducing=args.num_inducing,
         )
-    elif args.model in ["lstm"]:
-        raise NotImplementedError("LSTM is not implemented yet.")
+    elif args.model == "lstm":
+
+        input_size = train_dataset.X.shape[-1]
+
+        model = LSTMModel(
+            input_size=input_size,
+            hidden_size=64,
+            num_layers=2,
+            dropout=0.2,
+            epochs=args.epochs,
+            lr=args.lr,
+        )
     else:
         raise ValueError(
             f"Model architecture '{args.model}' is currently unsupported."
@@ -179,8 +190,9 @@ def main() -> None:
     )
     test_results = trainer.get_predictions(test_loader)
     trainer.plot_predictions(test_results)
-    trainer.plot_calibration(test_results)
 
+    if args.model in ["vgp", "variational_gp"]:
+        trainer.plot_calibration(test_results)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     model.save_model()
