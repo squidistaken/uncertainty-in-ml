@@ -148,7 +148,7 @@ class VariationalGP(gpytorch.models.ApproximateGP, BaseModel):
         return epoch_loss / len(x_train)
 
     def evaluate(
-        self, x_test: DataLoader, y_test: torch.Tensor
+        self, x_test: DataLoader, y_test: torch.Tensor, fit_noise: bool = True
     ) -> dict[str, float]:
         """
         Test the performance of the model.
@@ -156,6 +156,7 @@ class VariationalGP(gpytorch.models.ApproximateGP, BaseModel):
         Args:
             x_test (DataLoader): The testing data features.
             y_test (torch.Tensor): The testing data true targets.
+            fit_noise (bool): Whether to fit noise. Defaults to True.
 
         Returns:
             dict[str, float]: A metric(s) indicating the performance.

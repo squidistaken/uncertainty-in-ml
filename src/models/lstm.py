@@ -49,6 +49,18 @@ class LSTM(nn.Module, BaseModel):
         self.criterion = nn.MSELoss()
         self.scaler = SPYScaler()
 
+        # Homoscedastic aleatoric-noise std (in scaled space), fitted from the
+        # residuals during evaluation and shared across all predictions.
+        self.observation_noise: Optional[float] = None
+
+        # Number of stochastic forward passes for MC-Dropout uncertainty at
+        # inference.
+        self.mc_samples: int = int(kwargs.get("mc_samples", 1))
+
+        # Cache of the most recent per-point epistemic variance (MC-Dropout
+        # sample variance), exposed for the error-vs-uncertainty diagnostic.
+        self.last_epistemic_variance: Optional[torch.Tensor] = None
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute the LSTM prior forward pass.
 
@@ -76,14 +88,46 @@ class LSTM(nn.Module, BaseModel):
         Returns:
             torch.distributions.Normal: A prediction of the target.
         """
+        mean, epistemic_var = self._predict(x)
+
+        aleatoric_var = (
+            self.observation_noise**2
+            if self.observation_noise is not None
+            else 1.0
+        )
+        std = torch.sqrt(epistemic_var + aleatoric_var)
+
+        self.last_epistemic_variance = epistemic_var
+
+        return torch.distributions.Normal(mean, std)
+
+    def _predict(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Predict the per-point mean and epistemic variance for a batch.
+
+        Args:
+            x (torch.Tensor): The input data sequence.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: The per-point mean and epistemic
+                                               variance.
+        """
         self.eval()
+        x = x.to(DEVICE)
+
+        if self.mc_samples > 1:
+            self.lstm.train()
+
+            with torch.no_grad():
+                samples = torch.stack([self(x) for _ in range(self.mc_samples)])
+
+            self.lstm.eval()
+
+            return samples.mean(dim=0), samples.var(dim=0)
 
         with torch.no_grad():
-            x = x.to(DEVICE)
             mean = self(x)
-            std = torch.full_like(mean, 1e-3)
 
-            return torch.distributions.Normal(mean, std)
+        return mean, torch.zeros_like(mean)
 
     def backward_pass(
         self,
@@ -130,6 +174,7 @@ class LSTM(nn.Module, BaseModel):
         self,
         x_test: DataLoader,
         y_test: torch.Tensor,
+        fit_noise: bool = True,
     ) -> dict[str, float]:
         """
         Test the performance of the model.
@@ -137,21 +182,30 @@ class LSTM(nn.Module, BaseModel):
         Args:
             x_test (DataLoader): The testing data features.
             y_test (torch.Tensor): The testing data true targets.
+            fit_noise (bool): Whether to (re)fit the homoscedastic aleatoric
+                              noise from this set's residuals. Set to False to
+                              reuse a previously fitted noise (e.g. fitted on
+                              the validation set) so the probabilistic metrics
+                              on a held-out set are not computed with a variance
+                              tuned to that same set. Defaults to True.
 
         Returns:
             dict[str, float]: A metric(s) indicating the performance.
         """
         self.eval()
 
-        predictions = []
+        means = []
+        epistemic_vars = []
 
-        with torch.no_grad():
-            for batch_x, _, _ in x_test:
-                batch_x = batch_x.to(DEVICE)
-                predictions.append(self(batch_x))
+        for batch_x, _, _ in x_test:
+            batch_mean, batch_var = self._predict(batch_x)
+            means.append(batch_mean)
+            epistemic_vars.append(batch_var)
 
-        predictions = torch.cat(predictions)
+        predictions = torch.cat(means)
+        epistemic_var = torch.cat(epistemic_vars)
         pred_np = predictions.cpu().numpy()
+        epistemic_var_np = epistemic_var.cpu().numpy()
         target_np = y_test.cpu().numpy()
         raw_preds = self.scaler.inverse_transform_predictions(pred_np)
         raw_targets = self.scaler.inverse_transform_predictions(target_np)
@@ -164,19 +218,56 @@ class LSTM(nn.Module, BaseModel):
         hit_rate = np.mean(np.sign(raw_preds) == np.sign(raw_targets)) * 100
 
         # Probabilistic Metrics
+        # The predictive variance decomposes into a per-point epistemic term
+        # and a homoscedastic aleatoric term fitted from the residuals.
+        # The aleatoric variance is the residual variance with the mean
+        # epistemic variance removed, so the two terms sum to the observed
+        # error variance without double counting.
+        # With MC disabled the epistemic term is zero and this recovers the
+        # deterministic homoscedastic baseline.
+        if fit_noise or self.observation_noise is None:
+            residual_var = float(np.var(target_np - pred_np)) + 1e-6
+            aleatoric_var = max(
+                residual_var - float(epistemic_var_np.mean()), 1e-6
+            )
+            self.observation_noise = float(np.sqrt(aleatoric_var))
+
+        aleatoric_var = self.observation_noise**2
+        std_np = np.sqrt(aleatoric_var + epistemic_var_np)
+
+        means_t = torch.tensor(pred_np)
+        targets_t = torch.tensor(target_np)
+        std_t = torch.tensor(std_np, dtype=means_t.dtype)
+
         # 1. Negative Log-Likelihood (NLL)
-        residual_var = np.var(target_np - pred_np) + 1e-6
-        std = float(np.sqrt(residual_var))
-        normal_dist = torch.distributions.Normal(
-            torch.tensor(pred_np),
-            std,
-        )
-        nll = -normal_dist.log_prob(torch.tensor(target_np)).mean().item()
+        #    Computed in scaled space, then shifted by log(scale) to express it
+        #    in raw-return units.
+        normal_dist = torch.distributions.Normal(means_t, std_t)
+        nll_scaled = -normal_dist.log_prob(targets_t).mean().item()
+        nll = nll_scaled + np.log(self.scaler.scale)
 
         # 2. Expected Calibration Error (ECE)
-        #    NOTE: As a deterministic model, no per-prediction calibration
-        #          estimate is available.
-        ece = 0.0
+        #    We measure how well the predictive interval widths match the
+        #    observed coverage across confidence levels.
+        p_levels = torch.linspace(0.01, 0.99, 99)
+        unit_normal = torch.distributions.Normal(0.0, 1.0)
+
+        abs_errs = []
+
+        for p in p_levels:
+            z = unit_normal.icdf((1.0 + p) / 2.0)
+
+            lower_bound = means_t - z * std_t
+            upper_bound = means_t + z * std_t
+
+            observed_coverage = (
+                ((targets_t >= lower_bound) & (targets_t <= upper_bound))
+                .float()
+                .mean()
+            )
+            abs_errs.append(torch.abs(observed_coverage - p))
+
+        ece = torch.tensor(abs_errs).mean().item()
 
         return {
             "RMSE": float(rmse),

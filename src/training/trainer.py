@@ -1,15 +1,15 @@
 import copy
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Optional, Literal
 from datetime import datetime
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from src.constants import DEVICE, LOGGER, LOGS_DIR, RESULTS_DIR
+from src.constants import DEVICE, LOGGER, LOGS_DIR
 from src.models.base_model import BaseModel
 from src.utils.scaling import SPYScaler
+from src.utils import plotting
 
 
 class Trainer:
@@ -41,7 +41,10 @@ class Trainer:
         # Initialize the global unscaling utility
         self.scaler = SPYScaler()
 
-        self.history: dict[str, list[float]] = {
+        # train_loss holds per-epoch floats; val_metrics/test_metrics hold
+        # per-epoch metric dictionaries, so the value type is a heterogeneous
+        # list.
+        self.history: dict[str, list] = {
             "train_loss": [],
             "val_metrics": [],
             "test_metrics": [],
@@ -83,14 +86,13 @@ class Trainer:
             )
 
         loss_history = []
-
-        # Adjust best starting score based on whether higher is better or lower
-        # is better.
+        val_history = []
         higher_is_better = monitor in ["Hit_Rate"]
         best_score = float("-inf") if higher_is_better else float("inf")
 
         patience_counter = 0
         best_state = None
+        best_epoch = None
 
         for epoch in range(epochs):
             epoch_loss = self.model.backward_pass(
@@ -101,6 +103,7 @@ class Trainer:
             self.writer.add_scalar("Loss/Train", epoch_loss, epoch + 1)
 
             val_metrics = self.evaluate(use_test=False, step=epoch + 1)
+            val_history.append(val_metrics)
 
             LOGGER.info(
                 f"Epoch {epoch + 1:02d}/{epochs:02d} | "
@@ -126,6 +129,7 @@ class Trainer:
 
                 if is_improvement:
                     best_score = current_score
+                    best_epoch = epoch + 1
                     patience_counter = 0
                     best_state = self._capture_model_state()
                 else:
@@ -141,6 +145,9 @@ class Trainer:
                         break
 
         self.history["train_loss"] = loss_history
+        self.history["val_metrics"] = val_history
+        self.monitor = monitor
+        self.best_epoch = best_epoch
 
         if patience is not None and best_state is not None:
             self._restore_model_state(best_state)
@@ -174,7 +181,10 @@ class Trainer:
             self.model.load_state_dict(state)
 
     def evaluate(
-        self, use_test: bool = False, step: Optional[int] = None
+        self,
+        use_test: bool = False,
+        step: Optional[int] = None,
+        fit_noise: bool = True,
     ) -> dict[str, float]:
         """Evaluate the performance of the model.
 
@@ -183,6 +193,7 @@ class Trainer:
                              False.
             step (Optional[int]): The current training step (epoch) for
                                   TensorBoard logging. Defaults to None.
+            fit_noise (bool): Whether to fit noise. Defaults to True.
 
         Returns:
             dict[str, float]: A dictionary containing computed point and
@@ -195,7 +206,7 @@ class Trainer:
             all_targets.append(batch_y)
         targets = torch.cat(all_targets, dim=0).to(self.device)
 
-        metrics = self.model.evaluate(loader, targets)
+        metrics = self.model.evaluate(loader, targets, fit_noise=fit_noise)
 
         if step is None:
             step = len(self.history["train_loss"])
@@ -221,6 +232,7 @@ class Trainer:
         """
         all_means = []
         all_vars = []
+        all_epistemic = []
         all_targets = []
         all_times = []
 
@@ -229,56 +241,49 @@ class Trainer:
 
             all_means.append(predictive_dist.mean.cpu())
             all_vars.append(predictive_dist.variance.cpu())
+            epistemic = getattr(self.model, "last_epistemic_variance", None)
+            if epistemic is None:
+                epistemic = predictive_dist.variance
+            all_epistemic.append(epistemic.cpu())
+
             all_targets.append(batch_y.cpu())
             all_times.append(batch_time.cpu())
 
         return {
             "means": torch.cat(all_means, dim=0).numpy(),
             "variances": torch.cat(all_vars, dim=0).numpy(),
+            "epistemic_variances": torch.cat(all_epistemic, dim=0).numpy(),
             "targets": torch.cat(all_targets, dim=0).numpy(),
             "time_idx": torch.cat(all_times, dim=0).numpy(),
         }
 
+    def _step(self) -> int:
+        """The current global step (number of completed epochs) for logging."""
+        return len(self.history["train_loss"])
+
     def plot_history(self) -> None:
-        """Plot training loss history with premium aesthetics and log to TensorBoard."""
-        losses = self.history.get("train_loss", [])
+        """Plot training loss history."""
+        plotting.plot_history(self.model_name, self.history, self.writer)
 
-        if not losses:
-            LOGGER.warning("No training history to plot.")
-            return
-
-        fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
-        epochs = np.arange(1, len(losses) + 1)
-
-        ax.plot(
-            epochs,
-            losses,
-            marker="o",
-            color="#4F70E5",
-            label="Train Loss",
-            linewidth=1.8,
-            markersize=6,
+    def plot_learning_curves(self) -> None:
+        """Plot the training loss and validation metric per epoch."""
+        plotting.plot_learning_curves(
+            self.model_name,
+            self.history,
+            getattr(self, "monitor", "NLL"),
+            getattr(self, "best_epoch", None),
+            self.writer,
         )
 
-        ax.set_title(
-            f"{self.model_name} Training Loss Convergence", fontsize=14
+    def plot_validation_metrics(self) -> None:
+        """Plot every tracked validation metric over epochs."""
+        plotting.plot_validation_metrics(
+            self.model_name,
+            self.history,
+            getattr(self, "monitor", "NLL"),
+            getattr(self, "best_epoch", None),
+            self.writer,
         )
-        ax.set_xlabel("Epochs", fontsize=12)
-        ax.set_ylabel("Training Loss", fontsize=12)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        ax.legend(fontsize=11, loc="upper right")
-        fig.tight_layout()
-
-        save_path = RESULTS_DIR / f"{self.model_name}_loss_history.png"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=150)
-
-        self.writer.add_figure(
-            "Plots/Training Loss", fig, global_step=len(losses)
-        )
-
-        LOGGER.info(f"Saved loss history plot to: {save_path}")
-        plt.close(fig)
 
     def plot_predictions(
         self, results: dict[str, np.ndarray], max_points: int = 150
@@ -291,161 +296,24 @@ class Trainer:
             max_points (int): The maximum chronologically last points to plot
                               for clarity.
         """
-        means = results["means"][-max_points:]
-        variances = results["variances"][-max_points:]
-        targets = results["targets"][-max_points:]
-        time_idx = results["time_idx"][-max_points:]
-
-        stds = np.sqrt(variances)
-
-        # Unscale variables to true financial return percentages
-        raw_targets = self.scaler.inverse_transform_predictions(targets)
-        raw_means = self.scaler.inverse_transform_predictions(means)
-        raw_stds = self.scaler.inverse_transform_std(stds)
-
-        lower_bound = raw_means - 1.96 * raw_stds
-        upper_bound = raw_means + 1.96 * raw_stds
-
-        fig, ax = plt.subplots(figsize=(14, 6), dpi=150)
-
-        ax.plot(
-            time_idx,
-            raw_targets,
-            color="#3D3D3D",
-            label="True Log Returns",
-            linewidth=1.2,
-            alpha=0.9,
+        plotting.plot_predictions(
+            self.model_name,
+            results,
+            self.scaler,
+            self.writer,
+            self._step(),
+            max_points,
         )
-
-        ax.plot(
-            time_idx,
-            raw_means,
-            color="#DC143C",
-            label=f"{self.model_name} Mean Prediction",
-            linewidth=1.5,
-        )
-
-        ax.fill_between(
-            time_idx,
-            lower_bound,
-            upper_bound,
-            color="#F7D6DB",
-            alpha=0.6,
-            label="95% Confidence Interval",
-        )
-
-        ax.set_xlabel("Time Index", fontsize=12)
-        ax.set_ylabel("Raw Log Returns", fontsize=12)
-        ax.set_title(
-            "S&P 500 Out-of-Sample Predictions with Uncertainty Bounds (Unscaled)",
-            fontsize=14,
-        )
-        ax.legend(loc="upper right", fontsize=11)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        fig.tight_layout()
-
-        save_path = (
-            RESULTS_DIR / f"{self.model_name}_predictions_with_uncertainty.png"
-        )
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=150)
-
-        self.writer.add_figure(
-            "Plots/Out-of-Sample Predictions",
-            fig,
-            global_step=len(self.history["train_loss"]),
-        )
-
-        LOGGER.info(f"Saved predictions visualisation to: {save_path}")
-        plt.close(fig)
 
     def plot_calibration(self, results: dict[str, np.ndarray]) -> None:
-        """Plot the regression calibration curve comparing observed coverage
-        levels against expected coverage levels with premium aesthetics.
+        """Plot the regression calibration curve.
 
         Args:
             results (dict[str, np.ndarray]): The prediction outputs.
         """
-        means = results["means"]
-        variances = results["variances"]
-        targets = results["targets"]
-
-        means_t = torch.tensor(means)
-        stds_t = torch.tensor(np.sqrt(variances))
-        targets_t = torch.tensor(targets)
-
-        # We set up standard unit normal distribution to compute intervals.
-        unit_normal = torch.distributions.Normal(0.0, 1.0)
-        p_levels = torch.linspace(0.01, 0.99, 99)
-        observed_coverage = []
-
-        for p in p_levels:
-            # Find symmetric boundaries corresponding to probability level p.
-            z = unit_normal.icdf((1.0 + p) / 2.0)
-            lower = means_t - z * stds_t
-            upper = means_t + z * stds_t
-
-            coverage = (
-                ((targets_t >= lower) & (targets_t <= upper))
-                .float()
-                .mean()
-                .item()
-            )
-            observed_coverage.append(coverage)
-
-        ece = np.mean(np.abs(np.array(observed_coverage) - p_levels.numpy()))
-        fig, ax = plt.subplots(figsize=(8, 8), dpi=150)
-
-        ax.plot(
-            [0, 1],
-            [0, 1],
-            linestyle="--",
-            color="#2D2D2D",
-            label="Perfect Calibration",
-            linewidth=1.5,
+        plotting.plot_calibration(
+            self.model_name, results, self.writer, self._step()
         )
-
-        ax.plot(
-            p_levels.numpy(),
-            observed_coverage,
-            color="#4263EB",
-            label="Model Calibration",
-            linewidth=2.5,
-        )
-
-        ax.fill_between(
-            p_levels.numpy(),
-            p_levels.numpy(),
-            observed_coverage,
-            color="#E8EEFF",
-            alpha=0.5,
-        )
-
-        ax.set_xlabel("Expected Probability Coverage", fontsize=12)
-        ax.set_ylabel("Observed Coverage", fontsize=12)
-        ax.set_title(
-            f"Uncertainty Calibration Curve (ECE: {ece:.4f})", fontsize=14
-        )
-        ax.legend(loc="lower right", fontsize=11)
-        ax.grid(True, linestyle="--", alpha=0.5)
-
-        ax.set_aspect("equal", "box")
-        fig.tight_layout()
-
-        save_path = (
-            RESULTS_DIR / f"{self.model_name}_uncertainty_calibration.png"
-        )
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=150)
-
-        self.writer.add_figure(
-            "Plots/Uncertainty Calibration",
-            fig,
-            global_step=len(self.history["train_loss"]),
-        )
-
-        LOGGER.info(f"Saved uncertainty calibration curve to: {save_path}")
-        plt.close(fig)
 
     def plot_pit_histogram(
         self, results: dict[str, np.ndarray], bins: int = 20
@@ -456,60 +324,9 @@ class Trainer:
             results (dict[str, np.ndarray]): The prediction outputs.
             bins (int): The number of histogram bins. Defaults to 20.
         """
-        means = torch.tensor(results["means"])
-        stds = torch.tensor(np.sqrt(results["variances"]))
-        targets = torch.tensor(results["targets"])
-
-        # Guard against degenerate (near-zero) predictive variances.
-        stds = torch.clamp(stds, min=1e-12)
-
-        predictive_dist = torch.distributions.Normal(means, stds)
-        pit_values = predictive_dist.cdf(targets).numpy()
-
-        fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
-
-        ax.hist(
-            pit_values,
-            bins=bins,
-            range=(0.0, 1.0),
-            density=True,
-            color="#4263EB",
-            edgecolor="#2D2D2D",
-            alpha=0.75,
-            label="PIT Values",
+        plotting.plot_pit_histogram(
+            self.model_name, results, self.writer, self._step(), bins
         )
-
-        ax.axhline(
-            1.0,
-            linestyle="--",
-            color="#DC143C",
-            linewidth=1.8,
-            label="Ideal (Uniform)",
-        )
-
-        ax.set_xlabel("PIT Value", fontsize=12)
-        ax.set_ylabel("Density", fontsize=12)
-        ax.set_title(
-            f"{self.model_name} PIT Histogram (Calibration Diagnostic)",
-            fontsize=14,
-        )
-        ax.set_xlim(0.0, 1.0)
-        ax.legend(loc="upper center", fontsize=11)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        fig.tight_layout()
-
-        save_path = RESULTS_DIR / f"{self.model_name}_pit_histogram.png"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=150)
-
-        self.writer.add_figure(
-            "Plots/PIT Histogram",
-            fig,
-            global_step=len(self.history["train_loss"]),
-        )
-
-        LOGGER.info(f"Saved PIT histogram to: {save_path}")
-        plt.close(fig)
 
     def plot_error_vs_uncertainty(
         self, results: dict[str, np.ndarray], num_bins: int = 10
@@ -521,80 +338,14 @@ class Trainer:
             num_bins (int): The number of uncertainty bins for the trend line.
                             Defaults to 10.
         """
-        stds = np.sqrt(results["variances"])
-
-        raw_means = self.scaler.inverse_transform_predictions(results["means"])
-        raw_targets = self.scaler.inverse_transform_predictions(
-            results["targets"]
+        plotting.plot_error_vs_uncertainty(
+            self.model_name,
+            results,
+            self.scaler,
+            self.writer,
+            self._step(),
+            num_bins,
         )
-        raw_stds = self.scaler.inverse_transform_std(stds)
-
-        abs_errors = np.abs(raw_targets - raw_means)
-
-        corr = (
-            float(np.corrcoef(raw_stds, abs_errors)[0, 1])
-            if raw_stds.std() > 0
-            else float("nan")
-        )
-
-        fig, ax = plt.subplots(figsize=(9, 6), dpi=150)
-
-        ax.scatter(
-            raw_stds,
-            abs_errors,
-            color="#4263EB",
-            alpha=0.35,
-            s=18,
-            edgecolor="none",
-            label="Test Predictions",
-        )
-
-        # We overlay a binned-mean trend to summarise the relationship.
-        if raw_stds.std() > 0:
-            bin_edges = np.linspace(
-                raw_stds.min(), raw_stds.max(), num_bins + 1
-            )
-            bin_idx = np.digitize(raw_stds, bin_edges[1:-1])
-            bin_centers = []
-            bin_means = []
-            for b in range(num_bins):
-                mask = bin_idx == b
-                if np.any(mask):
-                    bin_centers.append(raw_stds[mask].mean())
-                    bin_means.append(abs_errors[mask].mean())
-
-            ax.plot(
-                bin_centers,
-                bin_means,
-                marker="o",
-                color="#DC143C",
-                linewidth=2.0,
-                markersize=6,
-                label="Binned Mean |Error|",
-            )
-
-        ax.set_xlabel("Predicted Std (Raw Log Returns)", fontsize=12)
-        ax.set_ylabel("Absolute Error (Raw Log Returns)", fontsize=12)
-        ax.set_title(
-            f"{self.model_name} Error vs. Uncertainty (corr = {corr:.3f})",
-            fontsize=14,
-        )
-        ax.legend(loc="upper left", fontsize=11)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        fig.tight_layout()
-
-        save_path = RESULTS_DIR / f"{self.model_name}_error_vs_uncertainty.png"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=150)
-
-        self.writer.add_figure(
-            "Plots/Error vs Uncertainty",
-            fig,
-            global_step=len(self.history["train_loss"]),
-        )
-
-        LOGGER.info(f"Saved error-vs-uncertainty plot to: {save_path}")
-        plt.close(fig)
 
     def close(self) -> None:
         """Clean up resources."""

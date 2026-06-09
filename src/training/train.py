@@ -44,6 +44,32 @@ def main() -> None:
         help="[Exclusive for Variational GP] The number of inducing points. Defaults to 100.",
     )
     parser.add_argument(
+        "--hidden-size",
+        type=int,
+        default=64,
+        help="[Exclusive for LSTM] The size of the LSTM hidden state. Defaults to 64.",
+    )
+    parser.add_argument(
+        "--num-layers",
+        type=int,
+        default=2,
+        help="[Exclusive for LSTM] The number of stacked LSTM layers. Defaults to 2.",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.2,
+        help="[Exclusive for LSTM] The dropout probability between stacked LSTM layers. Defaults to 0.2.",
+    )
+    parser.add_argument(
+        "--mc-samples",
+        type=int,
+        default=50,
+        help="[Exclusive for LSTM] The number of MC-Dropout forward passes used "
+        "to estimate predictive uncertainty at evaluation. Set to 1 for a "
+        "deterministic (homoscedastic) model. Defaults to 50.",
+    )
+    parser.add_argument(
         "--patience",
         type=int,
         default=10,
@@ -111,9 +137,9 @@ def main() -> None:
 
         model = LSTM(
             input_size=input_size,
-            hidden_size=64,
-            num_layers=2,
-            dropout=0.2,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            dropout=args.dropout,
             epochs=args.epochs,
             lr=args.lr,
         )
@@ -139,10 +165,18 @@ def main() -> None:
 
     LOGGER.info("Plotting training loss history...")
     trainer.plot_history()
+    trainer.plot_learning_curves()
+    trainer.plot_validation_metrics()
+
+    if args.model == "lstm" and args.mc_samples > 1:
+        LOGGER.info(
+            f"Enabling MC-Dropout with {args.mc_samples} samples for "
+            "evaluation."
+        )
+        model.mc_samples = args.mc_samples
 
     val_metrics = trainer.evaluate(use_test=False)
-
-    test_metrics = trainer.evaluate(use_test=True)
+    test_metrics = trainer.evaluate(use_test=True, fit_noise=False)
 
     LOGGER.info(
         "Generating predictions and diagnostic plots on out-of-sample test data..."
@@ -151,7 +185,12 @@ def main() -> None:
     trainer.plot_predictions(test_results)
     trainer.plot_calibration(test_results)
     trainer.plot_pit_histogram(test_results)
-    trainer.plot_error_vs_uncertainty(test_results)
+
+    # Error-vs-uncertainty needs per-point uncertainty spread.
+    if args.model in ["vgp", "variational_gp"] or (
+        args.model == "lstm" and args.mc_samples > 1
+    ):
+        trainer.plot_error_vs_uncertainty(test_results)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -163,16 +202,25 @@ def main() -> None:
         RESULTS_DIR / f"{model.__class__.__name__}_evaluation_report.json"
     )
 
+    configuration = {
+        "model": args.model,
+        "epochs": args.epochs,
+        "learning_rate": args.lr,
+        "batch_size": args.batch_size,
+        "seed": args.seed,
+        "device": str(DEVICE),
+    }
+
+    if args.model in ["vgp", "variational_gp"]:
+        configuration["num_inducing_points"] = args.num_inducing
+    elif args.model == "lstm":
+        configuration["hidden_size"] = args.hidden_size
+        configuration["num_layers"] = args.num_layers
+        configuration["dropout"] = args.dropout
+        configuration["mc_samples"] = args.mc_samples
+
     report_data = {
-        "configuration": {
-            "model": args.model,
-            "epochs": args.epochs,
-            "learning_rate": args.lr,
-            "batch_size": args.batch_size,
-            "num_inducing_points": args.num_inducing,
-            "seed": args.seed,
-            "device": str(DEVICE),
-        },
+        "configuration": configuration,
         "validation_metrics": val_metrics,
         "test_metrics": test_metrics,
     }

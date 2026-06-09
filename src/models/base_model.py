@@ -49,13 +49,14 @@ class BaseModel(ABC):
         ...
 
     @abstractmethod
-    def evaluate(self, x_test: Any, y_test: Any) -> Any:
+    def evaluate(self, x_test: Any, y_test: Any, fit_noise: bool = True) -> Any:
         """
         Test the performance of the model.
 
         Args:
             x_test (Any): The testing data features.
             y_test (Any): The testing data true targets.
+            fit_noise (bool): Whether to fit noise. Defaults to True.
 
         Returns:
             Any: A metric(s) indicating the performance.

@@ -18,20 +18,6 @@ class SPYScaler:
         self.mean = float(np.load(mean_path).squeeze())
         self.scale = float(np.load(scale_path).squeeze())
 
-    def transform(
-        self, x: Union[np.ndarray, torch.Tensor]
-    ) -> Union[np.ndarray, torch.Tensor]:
-        """
-        Forward scale raw log returns to zero-mean and unit-variance.
-
-        Args:
-            x (Union[np.ndarray, torch.Tensor]): The raw log returns.
-
-        Returns:
-            Union[np.ndarray, torch.Tensor]: A scaled version of the input.
-        """
-        return (x - self.mean) / self.scale
-
     def inverse_transform_predictions(
         self, y_scaled: Union[np.ndarray, torch.Tensor]
     ) -> Union[np.ndarray, torch.Tensor]:
@@ -60,17 +46,3 @@ class SPYScaler:
             Union[np.ndarray, torch.Tensor]: An unscaled version of the input.
         """
         return std_scaled * self.scale
-
-    def inverse_transform_variance(
-        self, var_scaled: Union[np.ndarray, torch.Tensor]
-    ) -> Union[np.ndarray, torch.Tensor]:
-        """
-        Convert scaled variances back to original scales.
-
-        Args:
-            var_scaled (Union[np.ndarray, torch.Tensor]): The scaled variances.
-
-        Returns:
-            Union[np.ndarray, torch.Tensor]: An unscaled version of the input.
-        """
-        return var_scaled * (self.scale**2)
