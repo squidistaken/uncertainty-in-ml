@@ -1,56 +1,12 @@
 import argparse
 import json
-import random
-import numpy as np
-import torch
 from torch.utils.data import DataLoader
-from src.constants import LOGGER, DEVICE, RESULTS_DIR, MODELS_DIR, SEED
+from src.constants import LOGGER, DEVICE, RESULTS_DIR, MODELS_DIR, SEED, DEBUG
 from src.data.dataset import SPYDataset
 from src.models.variational_gp import VariationalGP
-from src.models.lstm_model import LSTMModel
+from src.models.lstm import LSTM
 from src.training.trainer import Trainer
-from sklearn.cluster import KMeans
-
-
-def set_seeds(seed: int) -> None:
-    """Fix random seeds across environments for deterministic reproducibility.
-
-    Args:
-        seed (int): The seed value to apply.
-    """
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-    LOGGER.info(f"Fixed deterministic environment seeds using: {seed}")
-
-
-def select_inducing_points(
-    dataset: SPYDataset, num_inducing: int
-) -> torch.Tensor:
-    """Sample a subset of training data points to initialise GP inducing
-    points.
-
-    Args:
-        dataset (SPYDataset): The training dataset.
-        num_inducing (int): The number of inducing points to sample.
-
-    Returns:
-        torch.Tensor: A tensor containing the collected inducing features.
-    """
-    X_flat = dataset.X.view(dataset.X.size(0), -1).cpu().numpy()
-    kmeans = KMeans(n_clusters=num_inducing, random_state=SEED, n_init=10)
-    kmeans.fit(X_flat)
-    inducing_points = torch.tensor(
-        kmeans.cluster_centers_, dtype=torch.float32
-    ).to(DEVICE)
-
-    LOGGER.info(f"Selected {num_inducing} inducing points.")
-
-    return inducing_points
+from src.utils.training import set_seeds, select_inducing_points
 
 
 def main() -> None:
@@ -108,6 +64,10 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if DEBUG:
+        LOGGER.debug(f"Parsed arguments: {vars(args)}")
+
     set_seeds(args.seed)
 
     try:
@@ -138,7 +98,7 @@ def main() -> None:
 
     if args.model in ["vgp", "variational_gp"]:
         inducing_points = select_inducing_points(
-            train_dataset, args.num_inducing
+            train_dataset.X, args.num_inducing, seed=args.seed
         )
         model = VariationalGP(
             inducing_points=inducing_points,
@@ -147,10 +107,9 @@ def main() -> None:
             num_inducing=args.num_inducing,
         )
     elif args.model == "lstm":
-
         input_size = train_dataset.X.shape[-1]
 
-        model = LSTMModel(
+        model = LSTM(
             input_size=input_size,
             hidden_size=64,
             num_layers=2,
@@ -190,16 +149,19 @@ def main() -> None:
     )
     test_results = trainer.get_predictions(test_loader)
     trainer.plot_predictions(test_results)
+    trainer.plot_calibration(test_results)
+    trainer.plot_pit_histogram(test_results)
+    trainer.plot_error_vs_uncertainty(test_results)
 
-    if args.model in ["vgp", "variational_gp"]:
-        trainer.plot_calibration(test_results)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     model.save_model()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    metrics_path = RESULTS_DIR / "evaluation_report.json"
+    metrics_path = (
+        RESULTS_DIR / f"{model.__class__.__name__}_evaluation_report.json"
+    )
 
     report_data = {
         "configuration": {

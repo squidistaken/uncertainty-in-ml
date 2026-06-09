@@ -2,6 +2,13 @@
 
 Repository for the Uncertainty in Machine Learning course (WBAI065-05) at the University of Groningen.
 
+We forecast next-step S&P 500 (SPY) returns and quantify the predictive uncertainty around those forecasts. Two models are compared:
+
+ * **Variational GP** (`variational_gp`/`vgp`): Stochastic variational Gaussian Process that produces calibrated predictive distributions.
+ * **LSTM** (`lstm`): Deterministic recurrent baseline.
+
+Both share a common training, evaluation, and diagnostic-plotting pipeline, and are scored with point metrics (RMSE, directional Hit Rate) and probabilistic metrics (NLL, ECE).
+
 ## Development
 
 We use [uv](https://docs.astral.sh/uv/) for project management.
@@ -12,7 +19,7 @@ We use [uv](https://docs.astral.sh/uv/) for project management.
 uv sync
 ```
 
-3. Create a copy of [example.config.yaml](example.config.yaml) and rename it to config.yaml. Update the configuration, if desired.
+3. Create a copy of [example.config.yaml](example.config.yaml) and rename it to `config.yaml`. Update the configuration, if desired.
 
 ## Command Line Interface (CLI)
 
@@ -25,9 +32,9 @@ The project can be run via a CLI, for convenient usage and testing.
 ```bash
 uv run -m src.data.download_data [--force]
 ```
- * `--force`: Forces a redownload of the data, in the event of missing or corrupted raw data. Defaults to `False`. 
+ * `--force`: Forces a redownload of the data, in the event of missing or corrupted raw data. Defaults to `False`.
 
-This requires a Kaggle API token to be set up: https://www.kaggle.com/settings/api
+This requires a Kaggle API token, configured either via the `kaggle` section of `config.yaml` or a token file: https://www.kaggle.com/settings/api
 
 #### Option 2: Manual Download
 
@@ -40,24 +47,47 @@ Dataset: https://www.kaggle.com/datasets/yousefeddin/s-and-p-500-stock-price-end
 ```bash
 uv run -m src.features.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
 ```
+ * `--window-size`: The size of the sliding window for sequence generation. Defaults to 21.
+ * `--train-end-year`: The last year of the training split. Defaults to 2016.
+ * `--val-end-year`: The last year of the validation split. Defaults to 2020.
 
-## Training 
+## Training
 
 ```bash
-uv run -m src.train.train_model --model [--epochs] [--lr] [--batch-size] [--num-inducing] [--patience] [--monitor] [--seed]
+uv run -m src.training.train --model [--epochs] [--lr] [--batch-size] [--num-inducing] [--patience] [--monitor] [--seed]
 ```
  * `--model`: The model: `["lstm", "vgp", "variational_gp"]`. Required.
  * `--epochs`: The number of epochs to train. Defaults to 100.
- * `--lr`: The initial learning rate. Defaults to 0.001.
- * `--batch-size`: The training batch size. Defaults to 32.
- * `--num-inducing`: The number of inducing points. Exclusive for Variational GP. Defaults to 10.
+ * `--lr`: The initial learning rate. Defaults to 0.01.
+ * `--batch-size`: The training batch size. Defaults to 64.
+ * `--num-inducing`: The number of inducing points. Exclusive for Variational GP. Defaults to 100.
  * `--patience`: The number of epochs to wait for early stopping. Defaults to 10.
- * `--monitor`: The validation metric to track for early stopping: `["RMSE", "NLL", "ECE", "Hit_Rate"]`. Defaults to "NLL."
- * `--seed`: The deterministic seed value to apply. Defaults to `SEED`.
+ * `--monitor`: The validation metric to track for early stopping: `["RMSE", "NLL", "ECE", "Hit_Rate"]`. Defaults to "NLL".
+ * `--seed`: The deterministic seed value to apply. Defaults to the `seed` set in `config.yaml`.
+
+Training saves the trained model to `<MODELS_DIR>/`, an evaluation report (`<MODEL>_evaluation_report.json`) to `<RESULTS_DIR>/`, and a set of diagnostic plots (loss history, predictions with uncertainty, calibration, PIT histogram, and error-vs-uncertainty).
+
+## Hyperparameter Tuning
+
+Tune hyperparameters via chronological (expanding-window) cross-validation and Bayesian Optimisation with [Optuna](https://optuna.org/).
+
+```bash
+uv run -m src.training.tune_hyperparameters --model [--n-trials] [--n-splits] [--epochs] [--patience] [--monitor] [--sampler] [--timeout] [--seed]
+```
+ * `--model`: The model to tune: `["lstm", "vgp", "variational_gp"]`. Required.
+ * `--n-trials`: The number of Bayesian Optimisation trials. Defaults to 30.
+ * `--n-splits`: The number of expanding-window CV folds. Defaults to 5.
+ * `--epochs`: The maximum training epochs per fold. Defaults to 50.
+ * `--patience`: The early-stopping patience per fold. Defaults to 10.
+ * `--monitor`: The validation metric to optimise: `["RMSE", "NLL", "ECE", "Hit_Rate"]`. Defaults to "NLL".
+ * `--sampler`: The Optuna sampler: `["gp", "tpe"]`. Defaults to "gp".
+ * `--timeout`: The wall-clock budget in seconds for the whole study. Defaults to no limit.
+ * `--seed`: The deterministic seed value to apply. Defaults to the `seed` set in `config.yaml`.
+
+The best configuration and metrics are written to `<RESULTS_DIR>/<MODEL>_tuning_report.json`.
 
 ## Tensorboard Dashboard
 
 ```bash
 tensorboard --logdir logs/tensorboard
 ```
-

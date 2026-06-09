@@ -48,9 +48,9 @@ class Trainer:
         }
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        model_name = self.model.__class__.__name__
+        self.model_name = self.model.__class__.__name__
         self.tb_dir = (
-            Path(LOGS_DIR) / "tensorboard" / f"{model_name}_{timestamp}"
+            Path(LOGS_DIR) / "tensorboard" / f"{self.model_name}_{timestamp}"
         )
         self.writer = SummaryWriter(log_dir=str(self.tb_dir))
 
@@ -90,8 +90,7 @@ class Trainer:
         best_score = float("-inf") if higher_is_better else float("inf")
 
         patience_counter = 0
-        best_model_state = None
-        best_likelihood_state = None
+        best_state = None
 
         for epoch in range(epochs):
             epoch_loss = self.model.backward_pass(
@@ -128,26 +127,7 @@ class Trainer:
                 if is_improvement:
                     best_score = current_score
                     patience_counter = 0
-
-                    model_attr = getattr(self.model, "model", None)
-                    likelihood_attr = getattr(self.model, "likelihood", None)
-
-                    if isinstance(model_attr, torch.nn.Module) and isinstance(
-                        likelihood_attr, torch.nn.Module
-                    ):
-                        best_model_state = copy.deepcopy(
-                            model_attr.state_dict()
-                        )
-                        best_likelihood_state = copy.deepcopy(
-                            likelihood_attr.state_dict()
-                        )
-                    elif isinstance(self.model, torch.nn.Module):
-                        best_model_state = copy.deepcopy(
-                            self.model.state_dict()
-                        )
-                    elif hasattr(self.model, "state_dict"):
-                        state_dict_fn = getattr(self.model, "state_dict")
-                        best_model_state = copy.deepcopy(state_dict_fn())
+                    best_state = self._capture_model_state()
                 else:
                     patience_counter += 1
                     LOGGER.info(
@@ -162,22 +142,8 @@ class Trainer:
 
         self.history["train_loss"] = loss_history
 
-        if patience is not None and best_model_state is not None:
-            model_attr = getattr(self.model, "model", None)
-            likelihood_attr = getattr(self.model, "likelihood", None)
-
-            if (
-                isinstance(model_attr, torch.nn.Module)
-                and isinstance(likelihood_attr, torch.nn.Module)
-                and best_likelihood_state is not None
-            ):
-                model_attr.load_state_dict(best_model_state)
-                likelihood_attr.load_state_dict(best_likelihood_state)
-            elif isinstance(self.model, torch.nn.Module):
-                self.model.load_state_dict(best_model_state)
-            elif hasattr(self.model, "load_state_dict"):
-                load_state_dict_fn = getattr(self.model, "load_state_dict")
-                load_state_dict_fn(best_model_state)
+        if patience is not None and best_state is not None:
+            self._restore_model_state(best_state)
 
             LOGGER.info(
                 f"Restored best weights from validation epoch with best {monitor}: {best_score:.6f}"
@@ -186,6 +152,26 @@ class Trainer:
         LOGGER.info("Training complete.")
 
         return loss_history
+
+    def _capture_model_state(self) -> Optional[dict]:
+        """Snapshot the trainable weights of the model.
+
+        Returns:
+            Optional[dict]: A copy of the model's weights
+        """
+        if isinstance(self.model, torch.nn.Module):
+            return copy.deepcopy(self.model.state_dict())
+
+        return None
+
+    def _restore_model_state(self, state: dict) -> None:
+        """Restore captured model weights.
+
+        Args:
+            state (dict): The captured model state dict.
+        """
+        if isinstance(self.model, torch.nn.Module):
+            self.model.load_state_dict(state)
 
     def evaluate(
         self, use_test: bool = False, step: Optional[int] = None
@@ -274,14 +260,16 @@ class Trainer:
             markersize=6,
         )
 
-        ax.set_title("Variational GP Training Loss Convergence", fontsize=14)
+        ax.set_title(
+            f"{self.model_name} Training Loss Convergence", fontsize=14
+        )
         ax.set_xlabel("Epochs", fontsize=12)
-        ax.set_ylabel("Negative ELBO Loss", fontsize=12)
+        ax.set_ylabel("Training Loss", fontsize=12)
         ax.grid(True, linestyle="--", alpha=0.5)
         ax.legend(fontsize=11, loc="upper right")
         fig.tight_layout()
 
-        save_path = RESULTS_DIR / "loss_history.png"
+        save_path = RESULTS_DIR / f"{self.model_name}_loss_history.png"
         save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=150)
 
@@ -295,9 +283,8 @@ class Trainer:
     def plot_predictions(
         self, results: dict[str, np.ndarray], max_points: int = 150
     ) -> None:
-        """Plot observed returns against predicted returns with a shaded
-        95% predictive confidence interval using premium aesthetics and
-        unscaling utilities.
+        """Plot observed returns against predicted returns with 95% confidence
+        intervals.
 
         Args:
             results (dict[str, np.ndarray]): The prediction outputs.
@@ -334,7 +321,7 @@ class Trainer:
             time_idx,
             raw_means,
             color="#DC143C",
-            label="GP Mean Prediction",
+            label=f"{self.model_name} Mean Prediction",
             linewidth=1.5,
         )
 
@@ -357,7 +344,9 @@ class Trainer:
         ax.grid(True, linestyle="--", alpha=0.5)
         fig.tight_layout()
 
-        save_path = RESULTS_DIR / "predictions_with_uncertainty.png"
+        save_path = (
+            RESULTS_DIR / f"{self.model_name}_predictions_with_uncertainty.png"
+        )
         save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=150)
 
@@ -443,7 +432,9 @@ class Trainer:
         ax.set_aspect("equal", "box")
         fig.tight_layout()
 
-        save_path = RESULTS_DIR / "uncertainty_calibration.png"
+        save_path = (
+            RESULTS_DIR / f"{self.model_name}_uncertainty_calibration.png"
+        )
         save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=150)
 
@@ -454,6 +445,155 @@ class Trainer:
         )
 
         LOGGER.info(f"Saved uncertainty calibration curve to: {save_path}")
+        plt.close(fig)
+
+    def plot_pit_histogram(
+        self, results: dict[str, np.ndarray], bins: int = 20
+    ) -> None:
+        """Plot the Probability Integral Transform (PIT) histogram.
+
+        Args:
+            results (dict[str, np.ndarray]): The prediction outputs.
+            bins (int): The number of histogram bins. Defaults to 20.
+        """
+        means = torch.tensor(results["means"])
+        stds = torch.tensor(np.sqrt(results["variances"]))
+        targets = torch.tensor(results["targets"])
+
+        # Guard against degenerate (near-zero) predictive variances.
+        stds = torch.clamp(stds, min=1e-12)
+
+        predictive_dist = torch.distributions.Normal(means, stds)
+        pit_values = predictive_dist.cdf(targets).numpy()
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
+
+        ax.hist(
+            pit_values,
+            bins=bins,
+            range=(0.0, 1.0),
+            density=True,
+            color="#4263EB",
+            edgecolor="#2D2D2D",
+            alpha=0.75,
+            label="PIT Values",
+        )
+
+        ax.axhline(
+            1.0,
+            linestyle="--",
+            color="#DC143C",
+            linewidth=1.8,
+            label="Ideal (Uniform)",
+        )
+
+        ax.set_xlabel("PIT Value", fontsize=12)
+        ax.set_ylabel("Density", fontsize=12)
+        ax.set_title(
+            f"{self.model_name} PIT Histogram (Calibration Diagnostic)",
+            fontsize=14,
+        )
+        ax.set_xlim(0.0, 1.0)
+        ax.legend(loc="upper center", fontsize=11)
+        ax.grid(True, linestyle="--", alpha=0.5)
+        fig.tight_layout()
+
+        save_path = RESULTS_DIR / f"{self.model_name}_pit_histogram.png"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=150)
+
+        self.writer.add_figure(
+            "Plots/PIT Histogram",
+            fig,
+            global_step=len(self.history["train_loss"]),
+        )
+
+        LOGGER.info(f"Saved PIT histogram to: {save_path}")
+        plt.close(fig)
+
+    def plot_error_vs_uncertainty(
+        self, results: dict[str, np.ndarray], num_bins: int = 10
+    ) -> None:
+        """Plot absolute prediction error against predicted uncertainty.
+
+        Args:
+            results (dict[str, np.ndarray]): The prediction outputs.
+            num_bins (int): The number of uncertainty bins for the trend line.
+                            Defaults to 10.
+        """
+        stds = np.sqrt(results["variances"])
+
+        raw_means = self.scaler.inverse_transform_predictions(results["means"])
+        raw_targets = self.scaler.inverse_transform_predictions(
+            results["targets"]
+        )
+        raw_stds = self.scaler.inverse_transform_std(stds)
+
+        abs_errors = np.abs(raw_targets - raw_means)
+
+        corr = (
+            float(np.corrcoef(raw_stds, abs_errors)[0, 1])
+            if raw_stds.std() > 0
+            else float("nan")
+        )
+
+        fig, ax = plt.subplots(figsize=(9, 6), dpi=150)
+
+        ax.scatter(
+            raw_stds,
+            abs_errors,
+            color="#4263EB",
+            alpha=0.35,
+            s=18,
+            edgecolor="none",
+            label="Test Predictions",
+        )
+
+        # We overlay a binned-mean trend to summarise the relationship.
+        if raw_stds.std() > 0:
+            bin_edges = np.linspace(
+                raw_stds.min(), raw_stds.max(), num_bins + 1
+            )
+            bin_idx = np.digitize(raw_stds, bin_edges[1:-1])
+            bin_centers = []
+            bin_means = []
+            for b in range(num_bins):
+                mask = bin_idx == b
+                if np.any(mask):
+                    bin_centers.append(raw_stds[mask].mean())
+                    bin_means.append(abs_errors[mask].mean())
+
+            ax.plot(
+                bin_centers,
+                bin_means,
+                marker="o",
+                color="#DC143C",
+                linewidth=2.0,
+                markersize=6,
+                label="Binned Mean |Error|",
+            )
+
+        ax.set_xlabel("Predicted Std (Raw Log Returns)", fontsize=12)
+        ax.set_ylabel("Absolute Error (Raw Log Returns)", fontsize=12)
+        ax.set_title(
+            f"{self.model_name} Error vs. Uncertainty (corr = {corr:.3f})",
+            fontsize=14,
+        )
+        ax.legend(loc="upper left", fontsize=11)
+        ax.grid(True, linestyle="--", alpha=0.5)
+        fig.tight_layout()
+
+        save_path = RESULTS_DIR / f"{self.model_name}_error_vs_uncertainty.png"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=150)
+
+        self.writer.add_figure(
+            "Plots/Error vs Uncertainty",
+            fig,
+            global_step=len(self.history["train_loss"]),
+        )
+
+        LOGGER.info(f"Saved error-vs-uncertainty plot to: {save_path}")
         plt.close(fig)
 
     def close(self) -> None:

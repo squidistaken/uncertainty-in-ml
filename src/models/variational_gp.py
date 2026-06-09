@@ -9,26 +9,27 @@ from typing import Any, Optional, cast, Sized
 from src.utils.scaling import SPYScaler
 
 
-class SPYVariationalGP(gpytorch.models.ApproximateGP):
-    """GPyTorch Variational GP architecture class for the S&P 500 dataset.
+class VariationalGP(gpytorch.models.ApproximateGP, BaseModel):
+    """Variational Gaussian Process model class."""
 
-    This class is the mathematical core of the Guassian Process, defining the
-    variational strategy, mean function, and covariance (kernel) function.
-    """
-
-    def __init__(self, inducing_points: torch.Tensor) -> None:
-        """Initialise the class
+    def __init__(self, inducing_points: torch.Tensor, **kwargs: Any) -> None:
+        """Initialise the model.
 
         Args:
             inducing_points (torch.Tensor): The initial locations for the
                                             inducing points.
+            **kwargs: The configuration.
         """
+        if inducing_points.dim() > 2:
+            # If the inducing points retain an explicit feature dimension, it
+            # is flattened to match the flattened model inputs.
+            inducing_points = inducing_points.view(inducing_points.size(0), -1)
+
         variational_distribution = (
             gpytorch.variational.CholeskyVariationalDistribution(
                 inducing_points.size(0)
             )
         )
-
         variational_strategy = gpytorch.variational.VariationalStrategy(
             self,
             inducing_points,
@@ -37,17 +38,22 @@ class SPYVariationalGP(gpytorch.models.ApproximateGP):
             learn_inducing_locations=True,
         )
 
-        super().__init__(variational_strategy)
+        gpytorch.models.ApproximateGP.__init__(self, variational_strategy)
+        BaseModel.__init__(self, **kwargs)
 
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.MaternKernel(nu=1.5)
         )
+        self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        self.to(DEVICE)
+        self.optimizer = None
+        self.scaler = SPYScaler()
 
     def forward(
         self, x: torch.Tensor
     ) -> gpytorch.distributions.MultivariateNormal:
-        """Compute the forward pass.
+        """Compute the GP prior forward pass.
 
         Args:
             x (torch.Tensor): The input data.
@@ -60,35 +66,15 @@ class SPYVariationalGP(gpytorch.models.ApproximateGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-
-class VariationalGP(BaseModel):
-    """
-    Wrapper class for the Variational Gaussian Process model.
-    """
-
-    def __init__(self, inducing_points: torch.Tensor, **kwargs: Any) -> None:
-        """Initialise the class.
+    def _flatten_input(self, x: torch.Tensor) -> torch.Tensor:
+        """Format sequences for the GP.
 
         Args:
-            inducing_points (torch.Tensor): The initial locations for the
-                                            inducing points.
-            **kwargs: The configuration.
+            x (torch.Tensor): The input data.
+
+        Returns:
+            torch.Tensor: A flattened tensor.
         """
-        super().__init__(**kwargs)
-
-        if inducing_points.dim() > 2:
-            # If the inducing points retain an explicit 1D feature dimension,
-            # it is flattened.
-            inducing_points = inducing_points.view(inducing_points.size(0), -1)
-
-        self.model = SPYVariationalGP(inducing_points).to(DEVICE)
-        self.likelihood = gpytorch.likelihoods.GaussianLikelihood().to(DEVICE)
-        self.optimizer: Optional[torch.optim.Optimizer] = None
-        self.mll: Optional[gpytorch.mlls.VariationalELBO] = None
-        self.scaler = SPYScaler()
-
-    def _flatten_input(self, x: torch.Tensor) -> torch.Tensor:
-        """Format sequences for the GP."""
         if x.dim() > 2:
             return x.view(x.size(0), -1)
 
@@ -97,8 +83,7 @@ class VariationalGP(BaseModel):
     def forward_pass(
         self, x: torch.Tensor
     ) -> gpytorch.distributions.MultivariateNormal:
-        """
-        Predict the target for the input sequence.
+        """Predict the target for the input sequence.
 
         Args:
             x (torch.Tensor): The input data sequence.
@@ -108,49 +93,40 @@ class VariationalGP(BaseModel):
                                                        distribution containing
                                                        mean and variance.
         """
-        self.model.eval()
-        self.likelihood.eval()
+        self.eval()
 
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             x = self._flatten_input(x).to(DEVICE)
 
-            predictions = self.likelihood(self.model(x))
-
-        return predictions
+            return self.likelihood(self(x))
 
     def backward_pass(
         self, x_train: DataLoader, y_train: Optional[Any] = None, **kwargs: Any
     ) -> float:
-        """
-        Train the model on the provided data.
+        """Train the model for one epoch over the provided data.
 
         Args:
             x_train (DataLoader): The training data sequences.
-            y_train (Optional[Any], optional): The training targets. Defaults to None.
+            y_train (Optional[Any], optional): The testing data true targets.
             **kwargs: The configuration.
 
         Returns:
-            float: An average ELBO loss over the training epoch.
+            float: A metric(s) indicating the performance.
         """
         lr = kwargs.get("lr", 0.01)
 
-        self.model.train()
-        self.likelihood.train()
+        self.train()
 
         if self.optimizer is None:
-            self.optimizer = torch.optim.Adam(
-                [
-                    {"params": self.model.parameters()},
-                    {"params": self.likelihood.parameters()},
-                ],
-                lr=lr,
-            )
+            self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
-        if self.mll is None:
-            num_data = cast(Sized, x_train.dataset)
-            self.mll = gpytorch.mlls.VariationalELBO(
-                self.likelihood, self.model, num_data=len(num_data)
-            )
+        # The ELBO is built locally rather than cached as an attribute; it is
+        # just a harmless (weird) workaround so we do not need to make multiple
+        # classes.
+        num_data = cast(Sized, x_train.dataset)
+        mll = gpytorch.mlls.VariationalELBO(
+            self.likelihood, self, num_data=len(num_data)
+        )
 
         epoch_loss = 0.0
 
@@ -159,9 +135,9 @@ class VariationalGP(BaseModel):
             batch_y = batch_y.to(DEVICE)
 
             self.optimizer.zero_grad()
-            output = self.model(batch_x)
+            output = self(batch_x)
 
-            loss_tensor = cast(torch.Tensor, self.mll(output, batch_y))
+            loss_tensor = cast(torch.Tensor, mll(output, batch_y))
             loss = -loss_tensor
             loss.backward()
 
@@ -169,26 +145,22 @@ class VariationalGP(BaseModel):
 
             epoch_loss += loss.item()
 
-        avg_loss = epoch_loss / len(x_train)
-
-        return avg_loss
+        return epoch_loss / len(x_train)
 
     def evaluate(
         self, x_test: DataLoader, y_test: torch.Tensor
     ) -> dict[str, float]:
         """
-        Test the performance of the model. Metric evaluation is computed
-        in the mathematically and financially correct unscaled space.
+        Test the performance of the model.
 
         Args:
             x_test (DataLoader): The testing data features.
             y_test (torch.Tensor): The testing data true targets.
 
         Returns:
-            dict[str, float]: Computed metric values.
+            dict[str, float]: A metric(s) indicating the performance.
         """
-        self.model.eval()
-        self.likelihood.eval()
+        self.eval()
 
         all_means = []
         all_vars = []
@@ -199,7 +171,7 @@ class VariationalGP(BaseModel):
                 batch_x = self._flatten_input(batch_x).to(DEVICE)
                 batch_y = batch_y.to(DEVICE)
 
-                predictive_dist = self.likelihood(self.model(batch_x))
+                predictive_dist = self.likelihood(self(batch_x))
                 all_means.append(predictive_dist.mean)
                 all_vars.append(predictive_dist.variance)
                 all_targets.append(batch_y)
@@ -211,7 +183,6 @@ class VariationalGP(BaseModel):
         means_np = means.cpu().numpy()
         targets_np = targets.cpu().numpy()
 
-        # Unscale model outputs back to raw log percentage returns
         raw_means = self.scaler.inverse_transform_predictions(means_np)
         raw_targets = self.scaler.inverse_transform_predictions(targets_np)
 
@@ -271,8 +242,7 @@ class VariationalGP(BaseModel):
         """
         torch.save(
             {
-                "model_state_dict": self.model.state_dict(),
-                "likelihood_state_dict": self.likelihood.state_dict(),
+                "model_state_dict": self.state_dict(),
                 "config": self.config,
             },
             path,
@@ -286,5 +256,4 @@ class VariationalGP(BaseModel):
             path (Path): The path to load the model weights from.
         """
         checkpoint = torch.load(path, map_location=DEVICE, weights_only=True)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.likelihood.load_state_dict(checkpoint["likelihood_state_dict"])
+        self.load_state_dict(checkpoint["model_state_dict"])
