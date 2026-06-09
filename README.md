@@ -79,7 +79,7 @@ uv run main.py train --model [--epochs] [--lr] [--batch-size] [--num-inducing] [
  * `--monitor`: The validation metric to track for early stopping: `["RMSE", "NLL", "ECE", "Hit_Rate"]`. Defaults to "NLL".
  * `--seed`: The deterministic seed value to apply. Defaults to the `seed` set in `config.yaml`.
 
-Training saves the trained model to `<MODELS_DIR>/`, an evaluation report (`<MODEL>_evaluation_report.json`) to `<RESULTS_DIR>/`, and a set of diagnostic plots (loss history, predictions with uncertainty, calibration, PIT histogram, and error-vs-uncertainty).
+Training saves the trained model to `<MODELS_DIR>/`, an evaluation report (`<MODEL>_evaluation_report.json`) and a set of plots. to `<RESULTS_DIR>/`. 
 
 ### Recommended Hyperparameters
 

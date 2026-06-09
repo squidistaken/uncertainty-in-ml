@@ -328,6 +328,230 @@ def plot_predictions(
     )
 
 
+def plot_price_predictions(
+    model_name: str,
+    results: dict[str, np.ndarray],
+    scaler: SPYScaler,
+    prev_close: np.ndarray,
+    actual_open: Optional[np.ndarray] = None,
+    dates: Optional[np.ndarray] = None,
+    writer: Optional[SummaryWriter] = None,
+    step: int = 0,
+    max_points: int = 150,
+) -> None:
+    """Plot one-step-ahead price-level predictions with 95% confidence bounds.
+
+    Args:
+        model_name (str): The model name, used in titles and filenames.
+        results (dict[str, np.ndarray]): The prediction outputs (scaled means,
+                                         variances, targets, and time indices).
+        scaler (SPYScaler): The unscaling utility.
+        prev_close (np.ndarray): The actual close of the trading day preceding
+                                 each prediction, aligned element-wise with the
+                                 ``results`` arrays.
+        actual_open (Optional[np.ndarray]): The actual open price on each target
+                                            day, overlaid for context, if given.
+        dates (Optional[np.ndarray]): The x-axis dates aligned with the
+                                      predictions. Defaults to the results' time
+                                      indices.
+        writer (Optional[SummaryWriter]): The TensorBoard writer.
+        step (int): The global step for the TensorBoard entry.
+        max_points (int): The maximum chronologically last points to plot
+                          for clarity.
+    """
+    means = results["means"][-max_points:]
+    variances = results["variances"][-max_points:]
+    targets = results["targets"][-max_points:]
+    prev_close = np.asarray(prev_close)[-max_points:]
+
+    x = (np.asarray(dates) if dates is not None else results["time_idx"])[
+        -max_points:
+    ]
+
+    # Unscale the return forecast, then lift it into the price domain.
+    raw_means = scaler.inverse_transform_predictions(means)
+    raw_stds = scaler.inverse_transform_std(np.sqrt(variances))
+    raw_targets = scaler.inverse_transform_predictions(targets)
+
+    pred_close = prev_close * np.exp(raw_means)
+    lower_bound = prev_close * np.exp(raw_means - 1.96 * raw_stds)
+    upper_bound = prev_close * np.exp(raw_means + 1.96 * raw_stds)
+    actual_close = prev_close * np.exp(raw_targets)
+
+    fig, ax = plt.subplots(figsize=(14, 6), dpi=150)
+
+    ax.plot(
+        x,
+        actual_close,
+        color="#3D3D3D",
+        label="Actual Close",
+        linewidth=1.2,
+        alpha=0.9,
+    )
+
+    if actual_open is not None:
+        ax.plot(
+            x,
+            np.asarray(actual_open)[-max_points:],
+            color="#2E8B57",
+            label="Actual Open",
+            linewidth=1.0,
+            alpha=0.6,
+            linestyle="--",
+        )
+
+    ax.plot(
+        x,
+        pred_close,
+        color="#DC143C",
+        label=f"{model_name} Predicted Close",
+        linewidth=1.5,
+    )
+
+    ax.fill_between(
+        x,
+        lower_bound,
+        upper_bound,
+        color="#F7D6DB",
+        alpha=0.6,
+        label="95% Confidence Interval",
+    )
+
+    ax.set_xlabel("Date" if dates is not None else "Time Index", fontsize=12)
+    ax.set_ylabel("SPY Price ($)", fontsize=12)
+    ax.set_title(
+        f"{model_name} S&P 500 Next-Day Price Predictions "
+        "with Uncertainty Bounds",
+        fontsize=14,
+    )
+    ax.legend(loc="upper left", fontsize=11)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    fig.tight_layout()
+
+    _finalize(
+        fig,
+        RESULTS_DIR / f"{model_name}_price_predictions.png",
+        writer,
+        "Plots/Price Predictions",
+        step,
+        "price predictions visualisation",
+    )
+
+
+_OOD_COLORS = ["#4263EB", "#DC143C", "#2E8B57", "#F59F00"]
+
+
+def plot_ood_severity(
+    sweeps: dict[str, list[float]],
+    scales: list[float],
+    writer: Optional[SummaryWriter] = None,
+    step: int = 0,
+    prefix: str = "",
+) -> None:
+    """Plot mean epistemic uncertainty against out-of-distribution severity.
+
+    Args:
+        sweeps (dict[str, list[float]]): Per-model mean epistemic std at each
+                                         amplification factor (model name -> list
+                                         aligned with ``scales``).
+        scales (list[float]): The amplification factors that were swept.
+        writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
+        step (int): The global step for the TensorBoard entry.
+        prefix (str): A filename prefix (e.g. a model name) so single-model runs
+                      do not overwrite each other's figure.
+    """
+    fig, ax = plt.subplots(figsize=(9, 5), dpi=150)
+
+    for (name, means), color in zip(sweeps.items(), _OOD_COLORS):
+        ax.plot(
+            scales,
+            means,
+            marker="o",
+            color=color,
+            linewidth=1.8,
+            markersize=6,
+            label=name,
+        )
+
+    ax.set_xlabel("OOD severity (input amplification factor)", fontsize=12)
+    ax.set_ylabel("Mean epistemic std (scaled)", fontsize=12)
+    ax.set_title(
+        "Epistemic Uncertainty vs. Out-of-Distribution Severity", fontsize=14
+    )
+    ax.legend(fontsize=11)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    fig.tight_layout()
+
+    _finalize(
+        fig,
+        RESULTS_DIR / f"{prefix}ood_severity.png",
+        writer,
+        "Plots/OOD Severity",
+        step,
+        "OOD severity sweep",
+    )
+
+
+def plot_ood_separability(
+    reports: dict[str, dict],
+    writer: Optional[SummaryWriter] = None,
+    step: int = 0,
+    prefix: str = "",
+) -> None:
+    """Plot in- vs out-of-distribution epistemic-uncertainty histograms.
+
+    Args:
+        reports (dict[str, dict]): The per-model separability reports.
+        writer (Optional[SummaryWriter]): The TensorBoard writer.
+        step (int): The global step for the TensorBoard entry.
+        prefix (str): The filename prefix.
+    """
+    n = len(reports)
+    fig, axes = plt.subplots(1, n, figsize=(6 * n, 4.5), dpi=150, squeeze=False)
+
+    for ax, (name, rep) in zip(axes[0], reports.items()):
+        id_std, ood_std = rep["id_std"], rep["ood_std"]
+        hi = max(float(id_std.max()), float(ood_std.max()), 1e-9)
+        bins = np.linspace(0.0, hi, 40)
+
+        ax.hist(
+            id_std,
+            bins=bins,
+            density=True,
+            alpha=0.6,
+            color="#2E8B57",
+            label="In-distribution",
+        )
+        ax.hist(
+            ood_std,
+            bins=bins,
+            density=True,
+            alpha=0.6,
+            color="#DC143C",
+            label=f"OOD (×{rep['ood_factor']:g})",
+        )
+
+        ax.set_title(f"{name} (AUROC = {rep['auroc']:.3f})", fontsize=12)
+        ax.set_xlabel("Epistemic std (scaled)", fontsize=11)
+        ax.set_ylabel("Density", fontsize=11)
+        ax.legend(fontsize=9)
+        ax.grid(True, linestyle="--", alpha=0.5)
+
+    fig.suptitle(
+        "In- vs Out-of-Distribution Epistemic Uncertainty", fontsize=14
+    )
+    fig.tight_layout()
+
+    _finalize(
+        fig,
+        RESULTS_DIR / f"{prefix}ood_separability.png",
+        writer,
+        "Plots/OOD Separability",
+        step,
+        "OOD separability histograms",
+    )
+
+
 def plot_calibration(
     model_name: str,
     results: dict[str, np.ndarray],

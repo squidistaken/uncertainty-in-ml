@@ -213,6 +213,16 @@ class SPYPreprocessor:
         LOGGER.info("Preprocessing complete.")
 
 
+def load_prices_by_time_index() -> pd.DataFrame:
+    """Reconstruct the per-row price frames.
+
+    Returns:
+        pd.DataFrame: A DataFrame of columns.
+    """
+    df = SPYPreprocessor()._calculate_log_returns()
+    return df[["Time_Index", "Date", "Open", "Close"]].set_index("Time_Index")
+
+
 def main():
     """Run the script."""
     LOGGER.info("Starting data preprocessing pipeline...")

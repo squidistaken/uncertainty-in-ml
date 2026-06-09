@@ -305,6 +305,38 @@ class Trainer:
             max_points,
         )
 
+    def plot_price_predictions(
+        self,
+        results: dict[str, np.ndarray],
+        prev_close: np.ndarray,
+        actual_open: Optional[np.ndarray] = None,
+        dates: Optional[np.ndarray] = None,
+        max_points: int = 150,
+    ) -> None:
+        """Plot one-step-ahead price-level predictions with uncertainty.
+
+        Args:
+            results (dict[str, np.ndarray]): The prediction outputs.
+            prev_close (np.ndarray): The actual close preceding each prediction,
+                                     aligned element-wise with ``results``.
+            actual_open (Optional[np.ndarray]): The actual open on each target
+                                                day, overlaid for context.
+            dates (Optional[np.ndarray]): The x-axis dates aligned with the
+                                          predictions. Defaults to time indices.
+            max_points (int): The maximum chronologically last points to plot.
+        """
+        plotting.plot_price_predictions(
+            self.model_name,
+            results,
+            self.scaler,
+            prev_close,
+            actual_open=actual_open,
+            dates=dates,
+            writer=self.writer,
+            step=self._step(),
+            max_points=max_points,
+        )
+
     def plot_calibration(self, results: dict[str, np.ndarray]) -> None:
         """Plot the regression calibration curve.
 
