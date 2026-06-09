@@ -23,14 +23,24 @@ uv sync
 
 ## Command Line Interface (CLI)
 
-The project can be run via a CLI, for convenient usage and testing.
+The project can be run via a CLI, for convenient usage and testing. Every pipeline stage is available as a subcommand of a single entry point:
+
+```bash
+uv run main.py <command> [options]
+```
+ * `download`: Download the raw dataset from Kaggle.
+ * `preprocess`: Preprocess the data and engineer features.
+ * `train`: Train a model.
+ * `tune`: Tune model hyperparameters via cross-validation.
+
+Run `uv run main.py <command> --help` for command-specific options. Each stage can also be invoked directly as a module (e.g. `uv run -m src.training.train ...`); the options below apply to both forms.
 
 ### Downloading Data
 
 #### Option 1: Download Script Using Kaggle API
 
 ```bash
-uv run -m src.data.download_data [--force]
+uv run main.py download [--force]
 ```
  * `--force`: Forces a redownload of the data, in the event of missing or corrupted raw data. Defaults to `False`.
 
@@ -45,7 +55,7 @@ Dataset: https://www.kaggle.com/datasets/yousefeddin/s-and-p-500-stock-price-end
 ### Preprocessing and Feature Engineering
 
 ```bash
-uv run -m src.features.preprocess_data [--window-size] [--train-end-year] [--val-end-year]
+uv run main.py preprocess [--window-size] [--train-end-year] [--val-end-year]
 ```
  * `--window-size`: The size of the sliding window for sequence generation. Defaults to 21.
  * `--train-end-year`: The last year of the training split. Defaults to 2016.
@@ -54,7 +64,7 @@ uv run -m src.features.preprocess_data [--window-size] [--train-end-year] [--val
 ## Training
 
 ```bash
-uv run -m src.training.train --model [--epochs] [--lr] [--batch-size] [--num-inducing] [--patience] [--monitor] [--seed]
+uv run main.py train --model [--epochs] [--lr] [--batch-size] [--num-inducing] [--patience] [--monitor] [--seed]
 ```
  * `--model`: The model: `["lstm", "vgp", "variational_gp"]`. Required.
  * `--epochs`: The number of epochs to train. Defaults to 100.
@@ -72,7 +82,7 @@ Training saves the trained model to `<MODELS_DIR>/`, an evaluation report (`<MOD
 Tune hyperparameters via chronological (expanding-window) cross-validation and Bayesian Optimisation with [Optuna](https://optuna.org/).
 
 ```bash
-uv run -m src.training.tune_hyperparameters --model [--n-trials] [--n-splits] [--epochs] [--patience] [--monitor] [--sampler] [--timeout] [--seed]
+uv run main.py tune --model [--n-trials] [--n-splits] [--epochs] [--patience] [--monitor] [--sampler] [--timeout] [--seed]
 ```
  * `--model`: The model to tune: `["lstm", "vgp", "variational_gp"]`. Required.
  * `--n-trials`: The number of Bayesian Optimisation trials. Defaults to 30.
