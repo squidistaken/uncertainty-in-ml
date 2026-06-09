@@ -217,7 +217,7 @@ class LSTM(nn.Module, BaseModel):
         # 2. Hit Rate/Directional Accuracy
         hit_rate = np.mean(np.sign(raw_preds) == np.sign(raw_targets)) * 100
 
-        # Probabilistic Metrics
+        # Probabilistic Metrics:
         # The predictive variance decomposes into a per-point epistemic term
         # and a homoscedastic aleatoric term fitted from the residuals.
         # The aleatoric variance is the residual variance with the mean

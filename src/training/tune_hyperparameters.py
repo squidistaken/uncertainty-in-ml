@@ -355,8 +355,6 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # 'vgp' is a convenience alias for the canonical 'variational_gp' name that
-    # the model-building branches key on.
     if args.model == "vgp":
         args.model = "variational_gp"
 
