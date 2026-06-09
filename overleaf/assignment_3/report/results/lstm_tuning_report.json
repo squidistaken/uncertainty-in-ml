@@ -1,0 +1,30 @@
+{
+    "configuration": {
+        "model": "lstm",
+        "sampler": "gp",
+        "monitor": "NLL",
+        "direction": "minimize",
+        "n_trials": 50,
+        "n_splits": 5,
+        "epochs": 50,
+        "patience": 10,
+        "seed": 33,
+        "device": "cuda"
+    },
+    "best_value": 1.4183441877365113,
+    "best_params": {
+        "lr": 0.0028824672368677117,
+        "batch_size": 32,
+        "hidden_size": 128,
+        "num_layers": 3,
+        "dropout": 0.24703173405578172
+    },
+    "best_metrics": {
+        "RMSE": 0.012099806964397431,
+        "Hit_Rate": 54.403433476394845,
+        "NLL": 1.4183441877365113,
+        "ECE": 0.0
+    },
+    "n_complete_trials": 10,
+    "n_pruned_trials": 40
+}

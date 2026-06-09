@@ -1,0 +1,26 @@
+{
+    "configuration": {
+        "model": "lstm",
+        "epochs": 100,
+        "learning_rate": 0.0028824672368677117,
+        "batch_size": 32,
+        "seed": 33,
+        "device": "cuda",
+        "hidden_size": 128,
+        "num_layers": 3,
+        "dropout": 0.24703173405578172,
+        "mc_samples": 50
+    },
+    "validation_metrics": {
+        "RMSE": 0.012619700282812119,
+        "Hit_Rate": 57.3982125124131,
+        "NLL": -2.9538954785971017,
+        "ECE": 0.1620013564825058
+    },
+    "test_metrics": {
+        "RMSE": 0.010393586941063404,
+        "Hit_Rate": 54.581673306772906,
+        "NLL": -3.1144126943258614,
+        "ECE": 0.1077306941151619
+    }
+}
