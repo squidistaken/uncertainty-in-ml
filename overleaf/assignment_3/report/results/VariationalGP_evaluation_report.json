@@ -1,0 +1,23 @@
+{
+    "configuration": {
+        "model": "vgp",
+        "epochs": 100,
+        "learning_rate": 0.014542214474659556,
+        "batch_size": 64,
+        "seed": 33,
+        "device": "cuda",
+        "num_inducing_points": 100
+    },
+    "validation_metrics": {
+        "RMSE": 0.012687445618212223,
+        "Hit_Rate": 55.80933465739821,
+        "NLL": -2.96301665817779,
+        "ECE": 0.1656395047903061
+    },
+    "test_metrics": {
+        "RMSE": 0.01038325484842062,
+        "Hit_Rate": 51.59362549800797,
+        "NLL": -3.110163479199824,
+        "ECE": 0.11347540467977524
+    }
+}

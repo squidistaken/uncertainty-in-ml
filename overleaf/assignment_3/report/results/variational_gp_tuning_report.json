@@ -1,0 +1,28 @@
+{
+    "configuration": {
+        "model": "variational_gp",
+        "sampler": "gp",
+        "monitor": "NLL",
+        "direction": "minimize",
+        "n_trials": 50,
+        "n_splits": 5,
+        "epochs": 50,
+        "patience": 10,
+        "seed": 33,
+        "device": "cuda"
+    },
+    "best_value": -2.9846141151098577,
+    "best_params": {
+        "lr": 0.014542214474659556,
+        "batch_size": 64,
+        "num_inducing": 100
+    },
+    "best_metrics": {
+        "RMSE": 0.012252152524888515,
+        "Hit_Rate": 53.5450643776824,
+        "NLL": -2.9846141151098577,
+        "ECE": 0.10654181689023971
+    },
+    "n_complete_trials": 10,
+    "n_pruned_trials": 40
+}
