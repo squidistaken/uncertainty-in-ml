@@ -2,7 +2,6 @@
 \usepackage{float}
 \usepackage{url}
 \usepackage[style=apa]{biblatex}
-\bibliographystyle{plain}
 
 \begin{document}
 \pagestyle{body}
@@ -17,6 +16,8 @@
         {\large WBAI054-05}
 }
 \date{}
+
+\bibliographystyle{plain}
 
 \maketitle
 \thispagestyle{titlepage}
@@ -38,6 +39,26 @@
 
 \newpage
 
+\tableofcontents
+
+\newpage
+
 \input{overleaf/assignment_3/report/sections/01_introduction}
+\input{overleaf/assignment_3/report/sections/02_background}
+\input{overleaf/assignment_3/report/sections/03_dataset}
+\input{overleaf/assignment_3/report/sections/04_models}
+\input{overleaf/assignment_3/report/sections/05_results}
+\input{overleaf/assignment_3/report/sections/06_discussion}
+\input{overleaf/assignment_3/report/sections/07_conclusion}
+
+\newpage
+
+\bibliography{overleaf/assignment_3/report/references}
+
+\newpage
+
+\appendix
+
+\input{overleaf/assignment_3/report/sections/08_appendix}
 
 \end{document}
