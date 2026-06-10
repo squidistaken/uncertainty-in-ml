@@ -1,6 +1,6 @@
 # UML: S&P 500 Forecasting and Risk Quantification using Gaussian Processes
 
-Repository for the Uncertainty in Machine Learning course (WBAI065-05) at the University of Groningen.
+Repository for the Uncertainty in Machine Learning course (WBAI054-05) at the University of Groningen.
 
 We forecast next-step S&P 500 (SPY) returns and quantify the predictive uncertainty around those forecasts. Two models are compared:
 
