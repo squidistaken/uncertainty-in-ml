@@ -1,9 +1,30 @@
 \section{Background}
 
 \subsection{Guassian Processes (GP)}
+% Define GP as a prior over functions; any finite set of points is jointly Gaussian
+% Describe the kernel function (RBF/Matérn) and its role in encoding smoothness/structure
+% State the predictive distribution: posterior mean and variance given observed data
+
+text
 
 \subsection{Variational Inference and ELBO}
+% Explain why exact GP inference is O(n^3) and infeasible for ~7500 trading days
+% Describe inducing points as a sparse approximation that compresses the data
+% ELBO as the training objective: maximised during training, implicitly minimises NLL
+
+text
 
 \subsection{MC Dropout as Approximate Bayesian Inference}
+% Gal & Ghahramani (2016): applying dropout at inference time approximates a Bayesian posterior over network weights
+% Describe how N=50 stochastic forward passes produce a predictive distribution
+% Predictive mean = sample mean, predictive variance = sample variance
+
+text
 
 \subsection{Uncertainty Calibration}
+% Define calibration: predicted confidence should match empirical frequency
+% NLL as a proper scoring rule: penalises both overconfidence and underconfidence
+% ECE as the miscalibration gap between predicted and observed confidence
+% PIT histogram as a visual calibration diagnostic: uniform = well-calibrated
+
+text

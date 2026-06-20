@@ -2,6 +2,7 @@
 \usepackage{float}
 \usepackage{url}
 \usepackage[style=apa]{biblatex}
+\addbibresource{overleaf/assignment_3/report/references.bib}
 
 \begin{document}
 \pagestyle{body}
@@ -9,15 +10,13 @@
 \title{
     \vspace{5cm}
         {\bf
-        {\Huge S\&P 500 Forecasting and Risk Quantification using Gaussian Processes}}\\
+        {\Huge S\&P 500 Forecasting and Risk Quantification Using Gaussian Processes}} \\
     \vspace{1cm}
         {\bf
-        {\Large Uncertainty in Machine Learning}}\\
+        {\Large Uncertainty in Machine Learning}} \\
         {\large WBAI054-05}
 }
 \date{}
-
-\bibliographystyle{plain}
 
 \maketitle
 \thispagestyle{titlepage}
@@ -53,11 +52,13 @@
 
 \newpage
 
-\bibliography{overleaf/assignment_3/report/references}
+\pagestyle{references}
+\printbibliography
 
 \newpage
 
 \appendix
+\pagestyle{appendix}
 
 \input{overleaf/assignment_3/report/sections/08_appendix}
 

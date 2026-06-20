@@ -1,9 +1,34 @@
 \section{Models}
 
 \subsection{Baseline: Long Short-Term Memory (LSTM) Network}
+% Architecture: 3 layers, hidden size 128, dropout rate 0.247
+% Loss: MSE during training
+% Uncertainty via MC Dropout: N=50 stochastic forward passes at inference time   (dropout kept active during inference, not just training)
+% Predictive mean = mean of the 50 samples; predictive variance = variance of the 50 samples
+
+text
 
 \subsection{Variational GP Model}
+% Kernel choice: state which kernel (RBF/Matérn) and briefly justify why
+% 100 learned inducing points: what they are and why needed for scalability (~7500 days)
+% ELBO objective: maximised during training, implicitly minimises NLL
+% Output: predictive mean and variance directly from GP posterior
+
+text
 
 \subsection{Metrics}
+% RMSE: root mean squared error for point-prediction accuracy
+% Hit Rate: directional accuracy - did the model predict the correct sign of the return?
+% NLL: Gaussian negative log-likelihood, a proper scoring rule for the full distribution
+% ECE: expected calibration error, the gap between predicted confidence and empirical accuracy
+% Briefly note why NLL and ECE are the primary metrics for evaluating uncertainty quality
+
+text
 
 \subsection{Hyperparameter Tuning and Training Configuration}
+% Describe the tuning procedure: search strategy (random/grid/Bayesian), number of trials
+% State that validation NLL was used as the tuning criterion (proper scoring rule)
+% Include a table of the final chosen hyperparameters for both models from the appendix?
+% Fixed training details: epochs=100, patience=10 seed=33, hardware (CUDA GPU)
+
+text
