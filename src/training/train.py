@@ -8,7 +8,6 @@ from src.models.variational_gp import VariationalGP
 from src.models.lstm import LSTM
 from src.training.trainer import Trainer
 from src.utils.training import set_seeds, select_inducing_points
-from src.utils import ood, plotting
 
 
 def main() -> None:
@@ -193,6 +192,8 @@ def main() -> None:
         args.model == "lstm" and args.mc_samples > 1
     ):
         trainer.plot_error_vs_uncertainty(test_results)
+        trainer.plot_disentangled_uncertainty(test_results)
+        trainer.plot_error_confidence_threshold(test_results)
 
     # Lift the return forecasts back into the price domain (P_t = P_{t-1} *
     # exp(r_t)), anchored on the actual previous close for each test point.
@@ -209,27 +210,6 @@ def main() -> None:
         LOGGER.warning(
             "Raw price data not found; skipping price-level prediction plot."
         )
-
-    # Out-of-distribution diagnostics: does epistemic uncertainty grow on
-    # inputs far from the training distribution?
-    try:
-        model_name = model.__class__.__name__
-        scales = [1.0, 2.0, 3.0, 5.0, 8.0]
-        sweep = ood.uncertainty_vs_severity(model, test_dataset.X, scales)
-        report = ood.separability(model, test_dataset.X, ood_factor=scales[-1])
-        plotting.plot_ood_severity(
-            {model_name: sweep},
-            scales,
-            writer=trainer.writer,
-            prefix=f"{model_name}_",
-        )
-        plotting.plot_ood_separability(
-            {model_name: report},
-            writer=trainer.writer,
-            prefix=f"{model_name}_",
-        )
-    except Exception as e:
-        LOGGER.warning(f"Skipping OOD diagnostics: {e}")
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 

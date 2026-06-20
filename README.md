@@ -31,6 +31,7 @@ uv run main.py <command> [options]
  * `download`: Download the raw dataset from Kaggle.
  * `preprocess`: Preprocess the data and engineer features.
  * `train`: Train a model.
+ * `evaluate`: Evaluate a saved model and regenerate all plots.
  * `tune`: Tune model hyperparameters via cross-validation.
 
 Run `uv run main.py <command> --help` for command-specific options. Each stage can also be invoked directly as a module (e.g. `uv run -m src.training.train ...`); the options below apply to both forms.
@@ -101,6 +102,18 @@ uv run main.py train --model vgp \
   --lr 0.014542214474659556 --batch-size 64 --num-inducing 100 \
   --epochs 100 --patience 10 --monitor NLL
 ```
+
+## Evaluation
+
+Regenerate all diagnostic plots and the metrics JSON for a saved model without retraining. The script reconstructs the model architecture from the checkpoint, re-fits the LSTM's aleatoric noise on the validation set (matching the training procedure), and produces every plot the training pipeline would have generated.
+
+```bash
+uv run main.py evaluate --model <model> [--mc-samples] [--batch-size] [--seed]
+```
+ * `--model`: The model to evaluate: `["lstm", "vgp", "variational_gp"]`. Required.
+ * `--mc-samples`: [LSTM only] Number of MC-Dropout forward passes. Defaults to 50.
+ * `--batch-size`: Batch size for evaluation. Defaults to 64.
+ * `--seed`: The deterministic seed value to apply. Defaults to the `seed` set in `config.yaml`.
 
 ## Hyperparameter Tuning
 

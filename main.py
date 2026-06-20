@@ -15,6 +15,10 @@ COMMANDS = {
         "src.training.train",
         "Train a model.",
     ),
+    "evaluate": (
+        "src.training.evaluate",
+        "Evaluate a model.",
+    ),
     "tune": (
         "src.training.tune_hyperparameters",
         "Tune model hyperparameters via cross-validation.",

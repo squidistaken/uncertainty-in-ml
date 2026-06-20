@@ -379,6 +379,43 @@ class Trainer:
             num_bins,
         )
 
+    def plot_disentangled_uncertainty(
+        self, results: dict[str, np.ndarray], max_points: int = 150
+    ) -> None:
+        """Plot predictive, aleatoric, and epistemic uncertainty.
+
+        Args:
+            results (dict[str, np.ndarray]): The prediction outputs.
+            max_points (int): The maximum chronologically last points to plot.
+                              Defaults to 150.
+        """
+        plotting.plot_disentangled_uncertainty(
+            self.model_name,
+            results,
+            self.scaler,
+            self.writer,
+            self._step(),
+            max_points,
+        )
+
+    def plot_error_confidence_threshold(
+        self, results: dict[str, np.ndarray], num_thresholds: int = 50
+    ) -> None:
+        """Plot RMSE vs confidence threshold.
+
+        Args:
+            results (dict[str, np.ndarray]): The prediction outputs.
+            num_thresholds (int): Number of sweep points. Defaults to 50.
+        """
+        plotting.plot_error_confidence_threshold(
+            self.model_name,
+            results,
+            self.scaler,
+            self.writer,
+            self._step(),
+            num_thresholds,
+        )
+
     def close(self) -> None:
         """Clean up resources."""
         self.writer.close()

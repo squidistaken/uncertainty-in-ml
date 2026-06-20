@@ -47,6 +47,7 @@ def plot_history(
         model_name (str): The model name, used in titles and filenames.
         history (dict[str, list]): The training history.
         writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
+                                          Defaults to None.
     """
     losses = history.get("train_loss", [])
 
@@ -183,8 +184,9 @@ def plot_validation_metrics(
         model_name (str): The model name, used in titles and filenames.
         history (dict[str, list]): The training history.
         monitor (str): The monitored validation metric. Defaults to 'NLL'.
-        best_epoch (Optional[int]): The restored early-stopping epoch, if any.
         writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
     """
     val_metrics = history.get("val_metrics", [])
 
@@ -261,9 +263,10 @@ def plot_predictions(
         results (dict[str, np.ndarray]): The prediction outputs.
         scaler (SPYScaler): The unscaling utility.
         writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
-        step (int): The global step for the TensorBoard entry.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
         max_points (int): The maximum chronologically last points to plot
-                          for clarity.
+                          for clarity. Defaults to 150.
     """
     means = results["means"][-max_points:]
     variances = results["variances"][-max_points:]
@@ -354,10 +357,11 @@ def plot_price_predictions(
         dates (Optional[np.ndarray]): The x-axis dates aligned with the
                                       predictions. Defaults to the results' time
                                       indices.
-        writer (Optional[SummaryWriter]): The TensorBoard writer.
-        step (int): The global step for the TensorBoard entry.
+        writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
         max_points (int): The maximum chronologically last points to plot
-                          for clarity.
+                          for clarity. Defaults to 150.
     """
     means = results["means"][-max_points:]
     variances = results["variances"][-max_points:]
@@ -438,120 +442,6 @@ def plot_price_predictions(
     )
 
 
-_OOD_COLORS = ["#4263EB", "#DC143C", "#2E8B57", "#F59F00"]
-
-
-def plot_ood_severity(
-    sweeps: dict[str, list[float]],
-    scales: list[float],
-    writer: Optional[SummaryWriter] = None,
-    step: int = 0,
-    prefix: str = "",
-) -> None:
-    """Plot mean epistemic uncertainty against out-of-distribution severity.
-
-    Args:
-        sweeps (dict[str, list[float]]): Per-model mean epistemic std at each
-                                         amplification factor (model name -> list
-                                         aligned with ``scales``).
-        scales (list[float]): The amplification factors that were swept.
-        writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
-        step (int): The global step for the TensorBoard entry.
-        prefix (str): A filename prefix (e.g. a model name) so single-model runs
-                      do not overwrite each other's figure.
-    """
-    fig, ax = plt.subplots(figsize=(9, 5), dpi=150)
-
-    for (name, means), color in zip(sweeps.items(), _OOD_COLORS):
-        ax.plot(
-            scales,
-            means,
-            marker="o",
-            color=color,
-            linewidth=1.8,
-            markersize=6,
-            label=name,
-        )
-
-    ax.set_xlabel("OOD severity (input amplification factor)", fontsize=12)
-    ax.set_ylabel("Mean epistemic std (scaled)", fontsize=12)
-    ax.set_title(
-        "Epistemic Uncertainty vs. Out-of-Distribution Severity", fontsize=14
-    )
-    ax.legend(fontsize=11)
-    ax.grid(True, linestyle="--", alpha=0.5)
-    fig.tight_layout()
-
-    _finalize(
-        fig,
-        RESULTS_DIR / f"{prefix}ood_severity.png",
-        writer,
-        "Plots/OOD Severity",
-        step,
-        "OOD severity sweep",
-    )
-
-
-def plot_ood_separability(
-    reports: dict[str, dict],
-    writer: Optional[SummaryWriter] = None,
-    step: int = 0,
-    prefix: str = "",
-) -> None:
-    """Plot in- vs out-of-distribution epistemic-uncertainty histograms.
-
-    Args:
-        reports (dict[str, dict]): The per-model separability reports.
-        writer (Optional[SummaryWriter]): The TensorBoard writer.
-        step (int): The global step for the TensorBoard entry.
-        prefix (str): The filename prefix.
-    """
-    n = len(reports)
-    fig, axes = plt.subplots(1, n, figsize=(6 * n, 4.5), dpi=150, squeeze=False)
-
-    for ax, (name, rep) in zip(axes[0], reports.items()):
-        id_std, ood_std = rep["id_std"], rep["ood_std"]
-        hi = max(float(id_std.max()), float(ood_std.max()), 1e-9)
-        bins = np.linspace(0.0, hi, 40)
-
-        ax.hist(
-            id_std,
-            bins=bins,
-            density=True,
-            alpha=0.6,
-            color="#2E8B57",
-            label="In-distribution",
-        )
-        ax.hist(
-            ood_std,
-            bins=bins,
-            density=True,
-            alpha=0.6,
-            color="#DC143C",
-            label=f"OOD (×{rep['ood_factor']:g})",
-        )
-
-        ax.set_title(f"{name} (AUROC = {rep['auroc']:.3f})", fontsize=12)
-        ax.set_xlabel("Epistemic std (scaled)", fontsize=11)
-        ax.set_ylabel("Density", fontsize=11)
-        ax.legend(fontsize=9)
-        ax.grid(True, linestyle="--", alpha=0.5)
-
-    fig.suptitle(
-        "In- vs Out-of-Distribution Epistemic Uncertainty", fontsize=14
-    )
-    fig.tight_layout()
-
-    _finalize(
-        fig,
-        RESULTS_DIR / f"{prefix}ood_separability.png",
-        writer,
-        "Plots/OOD Separability",
-        step,
-        "OOD separability histograms",
-    )
-
-
 def plot_calibration(
     model_name: str,
     results: dict[str, np.ndarray],
@@ -565,7 +455,8 @@ def plot_calibration(
         model_name (str): The model name, used in titles and filenames.
         results (dict[str, np.ndarray]): The prediction outputs.
         writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
-        step (int): The global step for the TensorBoard entry.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
     """
     means = results["means"]
     variances = results["variances"]
@@ -651,7 +542,8 @@ def plot_pit_histogram(
         model_name (str): The model name, used in titles and filenames.
         results (dict[str, np.ndarray]): The prediction outputs.
         writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
-        step (int): The global step for the TensorBoard entry.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
         bins (int): The number of histogram bins. Defaults to 20.
     """
     means = torch.tensor(results["means"])
@@ -721,7 +613,8 @@ def plot_error_vs_uncertainty(
         results (dict[str, np.ndarray]): The prediction outputs.
         scaler (SPYScaler): The unscaling utility.
         writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
-        step (int): The global step for the TensorBoard entry.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
         num_bins (int): The number of uncertainty bins for the trend line.
                         Defaults to 10.
     """
@@ -792,4 +685,171 @@ def plot_error_vs_uncertainty(
         "Plots/Error vs Uncertainty",
         step,
         "error-vs-uncertainty plot",
+    )
+
+
+def plot_disentangled_uncertainty(
+    model_name: str,
+    results: dict[str, np.ndarray],
+    scaler: SPYScaler,
+    writer: Optional[SummaryWriter] = None,
+    step: int = 0,
+    max_points: int = 150,
+) -> None:
+    """Plot predictive, aleatoric, and epistemic uncertainty.
+
+    Args:
+        model_name (str): The model name, used in titles and filenames.
+        results (dict[str, np.ndarray]): The prediction outputs.
+        scaler (SPYScaler): The unscaling utility.
+        writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
+                                          Defaults to None.
+        step (int): The global step for the TensorBoard entry. Defaults to 0.
+        max_points (int): The maximum chronologically last points to plot.
+                          Defaults to 150.
+    """
+    means = results["means"][-max_points:]
+    variances = results["variances"][-max_points:]
+    epistemic_variances = results["epistemic_variances"][-max_points:]
+    targets = results["targets"][-max_points:]
+    time_idx = results["time_idx"][-max_points:]
+
+    aleatoric_variances = np.maximum(variances - epistemic_variances, 0.0)
+
+    raw_targets = scaler.inverse_transform_predictions(targets)
+    raw_means = scaler.inverse_transform_predictions(means)
+    total_stds = scaler.inverse_transform_std(np.sqrt(variances))
+    aleatoric_stds = scaler.inverse_transform_std(np.sqrt(aleatoric_variances))
+    epistemic_stds = scaler.inverse_transform_std(np.sqrt(epistemic_variances))
+
+    panels = [
+        (
+            "(a) Predictive Uncertainty (Total)",
+            total_stds,
+            "#4F70E5",
+            "#D0D9FA",
+        ),
+        (
+            "(b) Aleatoric Uncertainty (Data Noise)",
+            aleatoric_stds,
+            "#2E8B57",
+            "#C8EDD8",
+        ),
+        (
+            "(c) Epistemic Uncertainty (Model)",
+            epistemic_stds,
+            "#DC143C",
+            "#F7D6DB",
+        ),
+    ]
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), dpi=150, sharex=True)
+
+    for ax, (title, stds, line_color, fill_color) in zip(axes, panels):
+        lower = raw_means - 1.96 * stds
+        upper = raw_means + 1.96 * stds
+
+        ax.plot(
+            time_idx,
+            raw_targets,
+            color="#3D3D3D",
+            linewidth=1.0,
+            alpha=0.8,
+            label="True Returns",
+        )
+        ax.plot(
+            time_idx,
+            raw_means,
+            color=line_color,
+            linewidth=1.5,
+            label="Predicted Mean",
+        )
+        ax.fill_between(
+            time_idx,
+            lower,
+            upper,
+            color=fill_color,
+            alpha=0.6,
+            label="95% CI",
+        )
+        ax.set_title(title, fontsize=12)
+        ax.set_ylabel("Log Returns", fontsize=10)
+        ax.legend(fontsize=9, loc="upper right")
+        ax.grid(True, linestyle="--", alpha=0.5)
+
+    axes[-1].set_xlabel("Time Index", fontsize=12)
+    fig.suptitle(f"{model_name} Uncertainty Disentanglement", fontsize=14)
+    fig.tight_layout()
+
+    _finalize(
+        fig,
+        RESULTS_DIR / f"{model_name}_disentangled_uncertainty.png",
+        writer,
+        "Plots/Disentangled Uncertainty",
+        step,
+        "disentangled uncertainty plot",
+    )
+
+
+def plot_error_confidence_threshold(
+    model_name: str,
+    results: dict[str, np.ndarray],
+    scaler: SPYScaler,
+    writer: Optional[SummaryWriter] = None,
+    step: int = 0,
+    num_thresholds: int = 50,
+) -> None:
+    """Plot error vs confidence threshold.
+
+    Args:
+        model_name (str): The model name, used in titles and filenames.
+        results (dict[str, np.ndarray]): The prediction outputs.
+        scaler (SPYScaler): The unscaling utility.
+        writer (Optional[SummaryWriter]): The TensorBoard writer, if any.
+        step (int): The global step for the TensorBoard entry.
+        num_thresholds (int): Number of sweep points. Defaults to 50.
+    """
+    stds = np.sqrt(results["epistemic_variances"])
+    raw_means = scaler.inverse_transform_predictions(results["means"])
+    raw_targets = scaler.inverse_transform_predictions(results["targets"])
+    raw_stds = scaler.inverse_transform_std(stds)
+
+    abs_errors = np.abs(raw_targets - raw_means)
+
+    # Sort ascending by uncertainty → most confident predictions first.
+    sorted_idx = np.argsort(raw_stds)
+    sorted_errors = abs_errors[sorted_idx]
+
+    fractions = np.linspace(0.1, 1.0, num_thresholds)
+    rmse_values = []
+    for frac in fractions:
+        n_keep = max(1, int(len(sorted_errors) * frac))
+        kept = sorted_errors[:n_keep]
+        rmse_values.append(float(np.sqrt(np.mean(kept**2))))
+
+    fig, ax = plt.subplots(figsize=(9, 5), dpi=150)
+    ax.plot(
+        fractions * 100,
+        rmse_values,
+        color="#4263EB",
+        linewidth=2.0,
+        marker="o",
+        markersize=4,
+        label="RMSE on kept predictions",
+    )
+
+    ax.set_xlabel("% Predictions Kept (most confident first)", fontsize=12)
+    ax.set_ylabel("RMSE (Raw Log Returns)", fontsize=12)
+    ax.set_title(f"{model_name} Error vs. Confidence Threshold", fontsize=14)
+    ax.legend(fontsize=11)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    fig.tight_layout()
+
+    _finalize(
+        fig,
+        RESULTS_DIR / f"{model_name}_error_confidence_threshold.png",
+        writer,
+        "Plots/Error vs Confidence Threshold",
+        step,
+        "error-confidence threshold sweep",
     )
