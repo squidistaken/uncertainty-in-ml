@@ -1,70 +1,161 @@
+\section{Code Repository}
+\label{app:code}
+
+The full source code is organised as a Python package under with sub-modules for data loading, preprocessing and feature engineering, model definitions, training and early stopping, and evaluation utilities. The pipeline is exposed through a single command-line entry point with subcommands for each stage: \texttt{download}, \texttt{preprocess}, \texttt{train}, \texttt{evaluate}, and \texttt{tune}. Dependencies are managed with \texttt{uv} and pinned in \texttt{uv.lock} to ensure reproducibility. The fixed random seed of 33 is applied globally at the start of each run.
+
 \section{Hyperparameter Tuning Results}
+\label{app:hyperparameter_tuning}
 
-Hyperparameter search was performed using Optuna with a GP sampler, minimising NLL over 5-fold cross-validation across 50 trials (10 complete, 40 pruned) with a training budget of 50 epochs per trial (patience 10).
-
-\subsection{LSTM Network}
-
-\begin{table}[H]
-\centering
-\label{tab:lstm_tuning}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Hyperparameter} & \textbf{Search space} & \textbf{Best value} \\
-\midrule
-Learning rate           & log-uniform $[10^{-4}, 10^{-1}]$ & $2.88 \times 10^{-3}$ \\
-Batch size              & \{16, 32, 64, 128\}              & 32 \\
-Hidden size             & \{64, 128, 256\}                 & 128 \\
-Number of layers        & \{1, 2, 3\}                      & 3 \\
-Dropout                 & uniform $[0.0, 0.5]$             & 0.247 \\
-\midrule
-Best CV NLL             & \multicolumn{2}{c}{1.418} \\
-Best CV RMSE            & \multicolumn{2}{c}{0.0121} \\
-Best CV Hit Rate        & \multicolumn{2}{c}{54.40\%} \\
-\bottomrule
-\end{tabular}
-\caption{LSTM hyperparameter search results.}
-\end{table}
-
-\subsection{Variational GP Model}
+Hyperparameter search was performed using Optuna with a GP sampler, minimising NLL over 5-fold cross-validation across 50 trials (10 complete, 40 pruned) with a training budget of 50 epochs per trial (patience 10). Tables \ref{tab:lstm_tuning} and \ref{tab:vgp_tuning} report the search spaces and best values for the LSTM and variational GP, respectively.
 
 \begin{table}[H]
-\centering
-\label{tab:vgp_tuning}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Hyperparameter} & \textbf{Search space} & \textbf{Best value} \\
-\midrule
-Learning rate           & log-uniform $[10^{-4}, 10^{-1}]$ & $1.45 \times 10^{-2}$ \\
-Batch size              & \{32, 64, 128\}                  & 64 \\
-Inducing points         & \{50, 100, 200\}                 & 100 \\
-\midrule
-Best CV NLL             & \multicolumn{2}{c}{$-2.985$} \\
-Best CV RMSE            & \multicolumn{2}{c}{0.0123} \\
-Best CV Hit Rate        & \multicolumn{2}{c}{53.55\%} \\
-\bottomrule
-\end{tabular}
-\caption{Variational GP hyperparameter search results.}
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Hyperparameter} & \textbf{Search space} & \textbf{Best value} \\
+        \midrule
+        Learning rate           & log-uniform $[10^{-4}, 10^{-1}]$ & $2.88 \times 10^{-3}$ \\
+        Batch size              & \{16, 32, 64, 128\}              & 32 \\
+        Hidden size             & \{64, 128, 256\}                 & 128 \\
+        Number of layers        & \{1, 2, 3\}                      & 3 \\
+        Dropout                 & uniform $[0.0, 0.5]$             & 0.247 \\
+        \midrule
+        Best CV NLL             & \multicolumn{2}{c}{1.418} \\
+        Best CV RMSE            & \multicolumn{2}{c}{0.0121} \\
+        Best CV Hit Rate        & \multicolumn{2}{c}{54.40\%} \\
+        \bottomrule
+    \end{tabular}
+    \caption{LSTM hyperparameter search results.}
+    \label{tab:lstm_tuning}
 \end{table}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Hyperparameter} & \textbf{Search space} & \textbf{Best value} \\
+        \midrule
+        Learning rate           & log-uniform $[10^{-4}, 10^{-1}]$ & $1.45 \times 10^{-2}$ \\
+        Batch size              & \{32, 64, 128\}                  & 64 \\
+        Inducing points         & \{50, 100, 200\}                 & 100 \\
+        \midrule
+        Best CV NLL             & \multicolumn{2}{c}{$-2.985$} \\
+        Best CV RMSE            & \multicolumn{2}{c}{0.0123} \\
+        Best CV Hit Rate        & \multicolumn{2}{c}{53.55\%} \\
+        \bottomrule
+    \end{tabular}
+    \caption{VGP hyperparameter search results.}
+    \label{tab:vgp_tuning}
+\end{table}
+
+\section{Training Curves}
+\label{app:training_curves}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/LSTM_learning_curves.png}
+        \caption{LSTM}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/VariationalGP_learning_curves.png}
+        \caption{Variational GP}
+    \end{minipage}
+    \caption{Learning curves for the models, visualising the models' training loss and validation NLL.}
+    \label{fig:training_curves_fig}
+\end{figure}
+
+Figure \ref{fig:training_curves_fig} shows that both models achieve their best validation NLL at epoch three. The LSTM plateaus after this point with no further improvement. The VGP shows a clear divergence where the training loss continues to decrease while validation NLL steadily worsens, indicating overfitting. Early stopping (where patience was set to 10 epochs) terminated both runs at epoch 13 and restored the weights at epoch three.
+
+\section{Error vs.\ Uncertainty}
+\label{app:error_vs_uncertainty}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/LSTM_error_vs_uncertainty.png}
+        \caption{LSTM}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/VariationalGP_error_vs_uncertainty.png}
+        \caption{Variational GP}
+    \end{minipage}
+    \caption{Absolute prediction error versus predicted standard deviation.}
+    \label{fig:error_vs_uncertainty}
+\end{figure}
+
+Figure \ref{fig:error_vs_uncertainty} shows that the LSTM's near-zero correlation ($r = 0.043$) demonstrates that the MC Dropout variance carries no signal about prediction difficulty, as test points cluster at near-zero uncertainty regardless of actual error. The VGP's moderate correlation ($r = 0.344$) is more encouraging, although the predicted standard deviation spans a very narrow absolute range, indicating near-constant posterior variance across inputs.
+
+\section{Uncertainty Disentanglement}
+\label{app:uncertainty_disentanglement}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/LSTM_disentangled_uncertainty.png}
+        \caption{LSTM}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/VariationalGP_disentangled_uncertainty.png}
+        \caption{Variational GP}
+    \end{minipage}
+    \caption{Uncertainty decomposition into total, aleatoric, and epistemic components.}
+    \label{fig:disentanglement}
+\end{figure}
+
+Figure \ref{fig:disentanglement} shows that for the LSTM, aleatoric uncertainty dominates, and the epistemic component (being the MC Dropout variance) is negligible. For the variational GP, epistemic uncertainty accounts for almost all predictive variance, while the learned noise variance $\sigma_n^2$ is near zero. Neither decomposition is physically plausible for financial returns, which are known to be heteroscedastic.
+
+\section{Error vs. Confidence Threshold}
+\label{app:confidence_threshold}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/LSTM_error_confidence_threshold.png}
+        \caption{LSTM}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{overleaf/assignment_3/report/results/plots/VariationalGP_error_confidence_threshold.png}
+        \caption{Variational GP}
+    \end{minipage}
+    \caption{RMSE as a function of the percentage of predictions retained, ordered by confidence (lowest uncertainty first).}
+    \label{fig:confidence_threshold}
+\end{figure}
+
+Figure \ref{fig:confidence_threshold} shows that for the LSTM, RMSE shows no consistent downward trend as predictions are filtered by confidence, remaining roughly flat around 0.0104 throughout. This is consistent with the near-zero error-uncertainty correlation as the MC Dropout uncertainty does not identify the easier predictions. The variational GP shows a different and meaningful pattern, where retaining only the most confident predictions yields an RMSE of approximately 0.0070, compared to 0.0104 when all predictions are included. As more predictions are added, RMSE increases, demonstrating that the uncertainty of the variational GP carries a useful ranking signal: the predictions it is most confident about are genuinely more accurate.
 
 \section{Model Performance Summary}
+\label{app:model_performance}
 
-Final models were trained for 100 epochs with seed 33 on GPU. The table below reports all four metrics on the held-out validation and test splits.
+Final models were trained for 100 epochs with seed 33 on GPU. Table \ref{tab:model_performance_table} reports all four metrics on the held-out validation and test splits.
 
 \begin{table}[H]
-\centering
-\label{tab:model_performance}
-\begin{tabular}{llcccc}
-\toprule
-\textbf{Model} & \textbf{Split} & \textbf{RMSE} $\downarrow$ & \textbf{Hit Rate (\%)} $\uparrow$ & \textbf{NLL} $\downarrow$ & \textbf{ECE} $\downarrow$ \\
-\midrule
-\multirow{2}{*}{LSTM (MC Dropout)}
-  & Validation & 0.01262 & 57.40 & $-2.954$ & 0.1620 \\
-  & Test       & 0.01039 & 54.58 & $-3.114$ & 0.1077 \\
-\addlinespace
-\multirow{2}{*}{Variational GP}
-  & Validation & 0.01269 & 55.81 & $-2.963$ & 0.1656 \\
-  & Test       & 0.01038 & 51.59 & $-3.110$ & 0.1135 \\
-\bottomrule
-\end{tabular}
-\caption{Validation and test performance of both models. $\downarrow$ denotes lower-is-better; $\uparrow$ denotes higher-is-better.}
+    \centering
+    \begin{tabular}{llcccc}
+        \toprule
+        \textbf{Model} & \textbf{Split} & \textbf{RMSE} $\downarrow$ & \textbf{Hit Rate (\%)} $\uparrow$ & \textbf{NLL} $\downarrow$ & \textbf{ECE} $\downarrow$ \\
+        \midrule
+        \multirow{2}{*}{LSTM (MC Dropout)}
+          & Validation & 0.01262 & 57.40 & $-2.954$ & 0.1620 \\
+          & Test       & 0.01039 & 54.58 & $-3.114$ & 0.1077 \\
+        \addlinespace
+        \multirow{2}{*}{Variational GP}
+          & Validation & 0.01269 & 55.81 & $-2.963$ & 0.1656 \\
+          & Test       & 0.01038 & 51.59 & $-3.110$ & 0.1135 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Validation and test performance of both models. $\downarrow$ denotes lower-is-better; $\uparrow$ denotes higher-is-better.}
+    \label{tab:model_performance_table}
 \end{table}

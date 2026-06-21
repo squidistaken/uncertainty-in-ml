@@ -1,19 +1,17 @@
-\section{Dataset}
-% Source: S&P 500 daily closing prices 1993–2024 from Kaggle.
-% Preprocessing: convert closing prices to log returns for stationarity - explain why raw prices are non-stationary and why GPs require stationarity
-% Sliding window: 30-day lookback window, target is the t+1 log return
-% Chronological splits: Train (1993–2016), Validation (2017–2020), Test (2021–2024)
-% Explain why no shuffling is used: look-ahead bias and temporal dependence
-The dataset used in this project consists of daily S\&P 500 closing prices spanning the period from 1993 to 2024, obtained from Kaggle, \cite{sp500}. This dataset captures multiple market regimes, including periods of economic expansion, financial crises, and high volatility, making it well-suited for evaluating both predictive performance and uncertainty estimation in non-stationary financial environments.
+\section{Dataset and Preprocessing}
+\label{sec:dataset}
 
-Since raw asset prices are typically non-stationary, directly modeling them can lead to misleading statistical inference and unstable predictions. In particular, properties such as mean and variance change over time, violating assumptions underlying many probabilistic models, including Gaussian Processes. To address this, the closing prices are transformed into log returns:
-\[
-r_t = \log\left(\frac{P_t}{P_{t-1}}\right),
-\]
-which are more stationary and better suited for time series modeling, as they represent relative rather than absolute changes in price.
+The dataset consists of daily S\&P~500 closing prices from 1993 to 2024, obtained from Kaggle \parencite{sp500}. It captures multiple market regimes, including periods of economic expansion, financial crises, and elevated volatility, making it well-suited for evaluating both predictive performance and uncertainty estimation in non-stationary financial environments.
 
-To incorporate temporal dependencies, a sliding window approach is used. Each input sample consists of a 30-day lookback window of past log returns, and the corresponding target is the next-day return $r_{t+1}$. This formulation allows both models to learn short-term temporal structure and momentum effects present in financial markets.
+Since raw asset prices are non-stationary (the mean and variance change over time, violating assumptions of probabilistic models such as Gaussian Processes), the closing prices are transformed into dividend-adjusted log returns as equation \ref{eq:log_return}:
+\begin{equation}
+    r_t = \log\ \left(\frac{P_t + D_t}{P_{t-1}}\right),
+    \label{eq:log_return}
+\end{equation}
+where $P_t$ is the closing price and $D_t$ is any dividend paid on day $t$. Log returns are more stationary and represent relative rather than absolute price changes. They are then standardised to zero mean and unit variance, with the scaling parameters fitted exclusively on the training split and applied to all splits, preventing any leakage of future distributional information. The standardised log return is denoted $\tilde{r}_t$.
 
-The dataset is split chronologically into training, validation, and test sets: 1993–2016 for training, 2017–2020 for validation, and 2021–2024 for testing. This temporal split is needed in financial forecasting, as randomly shuffling the data would introduce look-ahead bias and violate the natural temporal ordering of observations, leading to overly optimistic performance estimates.
+Beyond the standardised return, three additional features are engineered at each time step: the absolute return $|\tilde{r}_t|$ as an approximation for daily realised volatility, a five-day rolling standard deviation $\sigma_5^{(t)}$ to capture short-term volatility clustering, and a 21-day rolling standard deviation $\sigma_{21}^{(t)}$ to capture medium-term volatility regime. Rows with insufficient history for the rolling statistics are discarded.
 
-This preprocessing pipeline makes sure that the models are trained and evaluated in a realistic forecasting setting that preserves the sequential and non-stationary flow of financial time series data.
+A sliding window of 21 trading days (approximately one calendar month of trading) is then applied to form input-output pairs: each input $\mathbf{x}_t \in \mathbb{R}^{21 \times 4}$ contains all four features over the preceding 21 days, and the target $y_t = \tilde{r}_{t+1}$ is the standardised log return on the following day. The data is split chronologically: training (1993-2016), validation (2017-2020), and test (2021-2024). Randomly shuffling would introduce look-ahead bias and violate the natural temporal ordering; this split ensures models are evaluated in a realistic out-of-sample forecasting setting. 
+
+The training period additionally spans several high-volatility episodes, including the dot-com crash (2000-2002), the global financial crisis (2007-2009), and the European debt crisis (2011-2012). Exposure to these sharp return spikes during training encourages both models to learn not only typical low-volatility behaviour but also the more extreme regimes that are of greatest interest for risk quantification.
