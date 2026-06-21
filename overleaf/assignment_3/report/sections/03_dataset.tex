@@ -4,5 +4,16 @@
 % Sliding window: 30-day lookback window, target is the t+1 log return
 % Chronological splits: Train (1993–2016), Validation (2017–2020), Test (2021–2024)
 % Explain why no shuffling is used: look-ahead bias and temporal dependence
+The dataset used in this project consists of daily S\&P 500 closing prices spanning the period from 1993 to 2024, obtained from Kaggle, \cite{sp500}. This dataset captures multiple market regimes, including periods of economic expansion, financial crises, and high volatility, making it well-suited for evaluating both predictive performance and uncertainty estimation in non-stationary financial environments.
 
-text
+Since raw asset prices are typically non-stationary, directly modeling them can lead to misleading statistical inference and unstable predictions. In particular, properties such as mean and variance change over time, violating assumptions underlying many probabilistic models, including Gaussian Processes. To address this, the closing prices are transformed into log returns:
+\[
+r_t = \log\left(\frac{P_t}{P_{t-1}}\right),
+\]
+which are more stationary and better suited for time series modeling, as they represent relative rather than absolute changes in price.
+
+To incorporate temporal dependencies, a sliding window approach is used. Each input sample consists of a 30-day lookback window of past log returns, and the corresponding target is the next-day return $r_{t+1}$. This formulation allows both models to learn short-term temporal structure and momentum effects present in financial markets.
+
+The dataset is split chronologically into training, validation, and test sets: 1993–2016 for training, 2017–2020 for validation, and 2021–2024 for testing. This temporal split is needed in financial forecasting, as randomly shuffling the data would introduce look-ahead bias and violate the natural temporal ordering of observations, leading to overly optimistic performance estimates.
+
+This preprocessing pipeline makes sure that the models are trained and evaluated in a realistic forecasting setting that preserves the sequential and non-stationary flow of financial time series data.

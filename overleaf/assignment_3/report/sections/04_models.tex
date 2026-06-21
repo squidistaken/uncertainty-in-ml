@@ -5,16 +5,34 @@
 % Loss: MSE during training
 % Uncertainty via MC Dropout: N=50 stochastic forward passes at inference time   (dropout kept active during inference, not just training)
 % Predictive mean = mean of the 50 samples; predictive variance = variance of the 50 samples
+The first model serves as a deep learning baseline and consists of a Long Short-Term Memory (LSTM) network designed to capture temporal dependencies in financial return sequences. The architecture contains three stacked LSTM layers with a hidden size of 128 units. To minimize overfitting, a dropout rate of 0.247 is applied between layers during training.
 
-text
+The model is trained using Mean Squared Error (MSE) loss, which optimises point prediction accuracy of next-day log returns. However, since standard LSTMs do not inherently provide uncertainty estimates, Monte Carlo (MC) Dropout is applied at inference time to approximate predictive uncertainty. Specifically, dropout layers are kept active during evaluation, and $N=50$ stochastic forward passes are performed for each input sequence.
+
+This produces a predictive distribution from which uncertainty is derived as:
+\[
+\hat{\mu} = \frac{1}{N}\sum_{i=1}^{N}\hat{y}^{(i)}, \quad
+\hat{\sigma}^2 = \frac{1}{N}\sum_{i=1}^{N}(\hat{y}^{(i)} - \hat{\mu})^2.
+\]
+Thus, the LSTM acts as a deterministic forecasting model during training and an approximate Bayesian model during inference.
+
 
 \subsection{Variational GP Model}
 % Kernel choice: state which kernel (RBF/Matérn) and briefly justify why
 % 100 learned inducing points: what they are and why needed for scalability (~7500 days)
 % ELBO objective: maximised during training, implicitly minimises NLL
 % Output: predictive mean and variance directly from GP posterior
+The second model is a Variational Gaussian Process (VGP), which provides a fully probabilistic framework for regression with explicit uncertainty quantification. The model uses a Radial Basis Function (RBF) kernel, chosen for its ability to capture smooth temporal variations in financial return dynamics while maintaining computational stability.
 
-text
+To make sure the model would be able to work with approximately 7,500 trading days, the model introduces 100 learnable inducing points. These inducing variables act as a compressed representation of the full dataset, allowing the GP to approximate the posterior distribution efficiently without requiring full $\mathcal{O}(n^3)$ inference.
+
+Training is performed by maximising the Evidence Lower Bound (ELBO), which jointly optimises data fit and regularisation through a Kullback--Leibler divergence term. This objective implicitly corresponds to minimising negative log-likelihood while maintaining a structured posterior approximation.
+
+Unlike the LSTM-based approach, the VGP directly outputs a predictive posterior distribution:
+\[
+p(y_* \mid x_*, X, y) = \mathcal{N}(\mu_*, \sigma_*^2),
+\]
+where both mean and variance are obtained analytically from the approximate GP posterior.
 
 \subsection{Metrics}
 % RMSE: root mean squared error for point-prediction accuracy
@@ -22,13 +40,22 @@ text
 % NLL: Gaussian negative log-likelihood, a proper scoring rule for the full distribution
 % ECE: expected calibration error, the gap between predicted confidence and empirical accuracy
 % Briefly note why NLL and ECE are the primary metrics for evaluating uncertainty quality
+Model performance is evaluated using both predictive accuracy and uncertainty quality metrics.
 
-text
+Root Mean Squared Error (RMSE) measures point prediction accuracy:
+\[
+\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^N (y_i - \hat{y}_i)^2}.
+\]
+
+Hit Rate evaluates directional accuracy by measuring how often the model correctly predicts the sign of returns.
+
+For probabilistic evaluation, Negative Log-Likelihood (NLL) is used as a proper scoring rule that assesses the quality of the full predictive distribution by penalising both overconfident and underconfident predictions. Expected Calibration Error (ECE) further quantifies the discrepancy between predicted confidence and observed empirical accuracy.
+
+Together, NLL and ECE directly evaluate whether the predicted distributions are both statistically consistent and well-calibrated.
+
 
 \subsection{Hyperparameter Tuning and Training Configuration}
 % Describe the tuning procedure: search strategy (random/grid/Bayesian), number of trials
 % State that validation NLL was used as the tuning criterion (proper scoring rule)
 % Include a table of the final chosen hyperparameters for both models from the appendix?
 % Fixed training details: epochs=100, patience=10 seed=33, hardware (CUDA GPU)
-
-text

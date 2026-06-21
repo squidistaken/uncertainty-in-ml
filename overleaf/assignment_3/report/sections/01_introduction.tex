@@ -4,4 +4,15 @@
 % State the contribution: compare LSTM+MC Dropout vs Variational GP for calibrated uncertainty estimation on S&P 500 log returns
 % Brief paper outline: one sentence per section
 
-text
+Financial forecasting is inherently uncertain because stock markets are influenced by macroeconomic events, investor sentiment, geopolitical developments, and other sources of noise. This noise leads to, in practical decision-making, a prediction that often is less valuable than understanding how confident a model is in that prediction. An incorrect forecast accompanied by high confidence can lead to poor decisions and significant financial losses.
+
+Traditional machine learning models are typically optimized for point prediction accuracy using metrics such as Mean Squared Error (MSE) or Root Mean Squared Error (RMSE). While these metrics evaluate predictive accuracy, they do not assess whether the model's confidence estimates are reliable. As a result, such models may appear accurate while producing poorly calibrated uncertainty estimates.
+
+The goal of this project was therefore not only to forecast next-day S$\&$P 500 returns, but also to evaluate the quality of predictive uncertainty. Two approaches were compared:
+
+\begin{itemize}
+    \item A Long Short-Term Memory (LSTM) neural network with Monte Carlo Dropout for uncertainty estimation.
+    \item A Variational Gaussian Process (VGP), which provides uncertainty estimates through a Bayesian framework.
+\end{itemize}
+
+The project evaluates both predictive accuracy and uncertainty quality using probabilistic metrics such as Negative Log-Likelihood (NLL) and Expected Calibration Error (ECE).
