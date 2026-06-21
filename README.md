@@ -5,9 +5,13 @@ Repository for the Uncertainty in Machine Learning course (WBAI054-05) at the Un
 We forecast next-step S&P 500 (SPY) returns and quantify the predictive uncertainty around those forecasts. Two models are compared:
 
  * **Variational GP** (`variational_gp`/`vgp`): Stochastic variational Gaussian Process that produces calibrated predictive distributions.
- * **LSTM** (`lstm`): Deterministic recurrent baseline.
+ * **LSTM** (`lstm`): Recurrent baseline with MC Dropout for uncertainty estimation at inference.
 
 Both share a common training, evaluation, and diagnostic-plotting pipeline, and are scored with point metrics (RMSE, directional Hit Rate) and probabilistic metrics (NLL, ECE).
+
+## Team
+ * Maurice Meijer (S5480604)
+ * Marcus Harald Olof Persson (S5343798)
 
 ## Development
 

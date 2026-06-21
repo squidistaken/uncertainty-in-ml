@@ -4,6 +4,10 @@ from datetime import datetime
 from typing import Any
 
 
+# Adapted from previous repositories owned by Marcus:
+#  - https://github.com/squidistaken/applied-machine-learning
+#  - https://github.com/squidistaken/WBAI059-05
+#  - https://github.com/squidistaken/ai-driven-sprint-analysis
 class Logger:
     """Logging utility class for managing application logging."""
 

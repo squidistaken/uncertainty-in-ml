@@ -25,6 +25,8 @@ class VariationalGP(gpytorch.models.ApproximateGP, BaseModel):
             # is flattened to match the flattened model inputs.
             inducing_points = inducing_points.view(inducing_points.size(0), -1)
 
+        # Adapted from the GPyTorch SVGP regression tutorial:
+        # https://docs.gpytorch.ai/en/stable/examples/04_Variational_and_Approximate_GPs/SVGP_Regression_CUDA.html
         variational_distribution = (
             gpytorch.variational.CholeskyVariationalDistribution(
                 inducing_points.size(0)
