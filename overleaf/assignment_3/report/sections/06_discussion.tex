@@ -1,31 +1,41 @@
-\section{Discussion}
+\section{Discussion}\label{sec:discussion}
 
 \subsection{Forecast Accuracy}
-% Compare RMSE and Hit Rate between models.
-% Does the GP add value over the LSTM for point prediction, or do they perform equally?
-% What does the Hit Rate tell us about the inherent difficulty of the task?
 
-text
+The two models achieve virtually identical point forecasting performance. On the test set, the LSTM obtains an RMSE of 0.01039, while the variational GP achieves 0.01038. Similarly, both models produce nearly identical NLL values, suggesting that neither model has a meaningful advantage in predicting next-day S\&P 500 returns.
+
+The Hit Rate results provide extra insight into the difficulty of the forecasting task. The LSTM correctly predicts the direction of returns 54.58\% of the time, compared to 51.59\% for the variational GP. Although the LSTM performs slightly better, both values are only modestly above the 50\% baseline expected from random guessing. This reflects a common characteristic of financial markets: short-horizon returns contain a high degree of noise and are difficult to predict consistently.
+
+The absence of a clear performance gap suggests that the additional modelling flexibility of the variational GP does not translate into superior point forecasts for this dataset. Both models largely learn the same underlying signal, namely that next-day returns are centred close to zero with relatively weak temporal structure. The primary distinction between the models then lies not in predictive accuracy but in how they quantify uncertainty.
 
 \subsection{Uncertainty Quality}
-% Compare NLL and ECE between models
-% Which model produces better-calibrated uncertainty and why?
-% Discuss findings
-% Does the GP's principled Bayesian framework translate into better uncertainty estimates?
 
-text
+Calibration metrics slightly favour the LSTM. The LSTM achieves an ECE of 0.1077 compared to 0.1135 for the variational GP, while the NLL values are nearly identical. The PIT histograms and calibration curves indicate that both models are underconfident, producing predictive intervals that are wider than necessary. This suggests that neither approach achieves perfect calibration despite explicitly modelling uncertainty. However, the uncertainty diagnostics reveal that the LSTM's uncertainty estimates exhibit almost no relationship with actual prediction errors (correlation of $r = 0.043$), and filtering predictions by confidence does not improve RMSE. This means that the MC Dropout variance provides little information about which predictions are likely to be correct.
+
+Although the overall calibration of the variational GP is slightly worse, its uncertainty estimates show a moderate positive correlation with prediction error ($r = 0.344$). Furthermore, selecting only the most confident predictions substantially reduces RMSE, indicating that the GP uncertainty carries a meaningful ranking signal. The model is therefore able to identify which predictions are relatively easier or harder, even if the absolute uncertainty magnitudes remain imperfectly calibrated.
+
+The LSTM assigns almost all predictive variance to aleatoric noise, with the MC Dropout epistemic component being negligible. Conversely, the variational GP attributes almost all variance to its epistemic component, with the learned noise variance $\sigma_n^2$ near zero. Neither decomposition is physically plausible for financial returns, which are well-known to be heteroscedastic from realised volatility clusters and spikes during market stress. This suggests that both models lack the mechanisms needed to adapt their uncertainty to the local volatility regime, which is reflected in the flat, roughly constant confidence bands visible in the prediction plots.
+
+These findings suggest that the framework of the variational GP does not automatically guarantee better calibration. Nevertheless, it appears to produce uncertainty estimates that are more informative for decision-making. In contrast, MC Dropout provides uncertainty estimates that are well-calibrated on average but largely uninformative at the individual prediction level. For risk-sensitive applications where the ranking of prediction confidence matters, the variational GP is therefore the preferable choice, while the LSTM offers a cheaper alternative where only average calibration is required.
 
 \subsection{Goal Assessment}
-% Revisit the proposal goals: calibrated uncertainty, proper evaluation, model comparison
-% To what degree were these goals fulfilled?
 
-text
+We wanted to evaluate calibrated uncertainty estimation, apply appropriate probabilistic evaluation metrics, and compare a deep learning approach against a Bayesian alternative.
+
+For the first objective, both models successfully produced predictive uncertainty estimates, allowing calibration and uncertainty-quality analyses that would not be possible with deterministic forecasting models. However, neither model achieved ideal calibration, and both exhibited underconfidence. 
+
+The evaluation, however, was fully achieved, since it extended beyond traditional point-forecast metrics by incorporating NLL, ECE, PIT histograms, calibration curves, uncertainty decomposition, and confidence-based filtering analyses. These diagnostics provided a much richer assessment of predictive performance than RMSE alone.
+
+Finally, the comparison revealed that predictive accuracy alone is insufficient to distinguish between the models, as both produced nearly identical forecasts. The uncertainty analyses, however, exposed meaningful differences. While the LSTM achieved slightly better calibration metrics, the variational GP generated uncertainty estimates that were more strongly associated with actual prediction difficulty. This demonstrates the value of evaluating uncertainty quality separately from forecasting accuracy.
 
 \subsection{Limitations}
-% Inducing point compression: 100 points may lose information from 7500 training days
-% no ood
-% Stationarity assumption: log returns may not be stationary during crises
-% No macroeconomic features (interest rates, VIX, sentiment), this is purely price-based.
-% MC Dropout is a rough approximation to Bayesian inference; not a true posterior.
 
-text
+First, the sparse variational GP uses only 100 inducing points to represent approximately 7,500 training observations. While this substantially reduces computational complexity, it also compresses information from the training set and may limit the model's ability to capture more complex market dynamics.
+
+The next limitation is that the evaluation focuses exclusively on in-distribution test data. The models are not assessed under genuine out-of-distribution conditions such as unprecedented market shocks or structural regime changes. Since uncertainty estimation is particularly valuable under distribution shift, future work should evaluate both approaches on deliberately out-of-distribution scenarios.
+
+Third, although log returns are considerably more stationary than raw prices, the stationarity assumption remains imperfect. Major financial crises, pandemics, and periods of extreme volatility can produce behaviour that violates the assumptions embedded in both the GP kernel and the training procedure. Crucially, including such episodes in the training set is not sufficient to address this: both models are trained to minimise average loss across all observations, so rare crisis periods contribute little to the learned parameters.
+
+Fourth, the feature set is intentionally simple and relies exclusively on historical price information. Important explanatory variables such as interest rates, volatility indices, macroeconomic indicators, and market sentiment are omitted. Incorporating such information may improve both predictive performance and uncertainty estimation.
+
+Finally, MC Dropout is only an approximate Bayesian inference method rather than a true posterior inference procedure. The quality of its uncertainty estimates depends heavily on architectural choices and dropout behaviour. The comparison also should not be interpreted as a comparison between a fully Bayesian neural network and a Gaussian Process, but rather between a practical approximation and a principled Bayesian model.

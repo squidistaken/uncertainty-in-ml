@@ -1,7 +1,9 @@
-\section{Conclusion}
-% Restate the goal: calibrated uncertainty estimation for S&P 500 log-return forecasting
-% Summarise key finding: both models achieve similar point accuracy; briefly state which was better calibrated and what that means in practice
-% State to what degree the proposal goal was met
-% Future work (1–2 sentences): richer kernel compositions, macroeconomic features, exact sparse GPs beyond learned inducing points
+\section{Conclusion}\label{sec:conclusion}
 
-text
+The project compared an LSTM with MC Dropout and a variational GP for next-day S\&P 500 log-return forecasting, with a particular focus on uncertainty estimation rather than only predictive accuracy. Both models achieved virtually identical forecasting performance, with almost the same RMSE and NLL on the test set. The LSTM obtained a slightly better Hit Rate and marginally lower ECE, indicating somewhat better average calibration. However, additional uncertainty diagnostics revealed a more important distinction: the LSTM's uncertainty estimates were largely unrelated to actual prediction errors, whereas the variational GP's uncertainty showed a meaningful relationship with prediction difficulty. The variational GP was also able to identify a subset of predictions that were substantially more accurate when ranked by confidence.
+
+As a result, although neither model achieved perfect calibration, the variational GP produced more useful uncertainty estimates in practice. Since the primary objective of the project was reliable uncertainty quantification rather than marginal improvements in point prediction, we recommend the Variational Gaussian Process as the preferred model. Its Bayesian framework provided uncertainty estimates that better reflected prediction reliability and therefore offered greater value for risk-aware financial decision-making.
+
+Overall, the project successfully demonstrated that evaluating uncertainty quality can reveal important differences between models that appear nearly identical when assessed using traditional forecasting metrics alone.
+
+Future work could explore richer kernel compositions to better capture the non-stationary dynamics of financial returns, incorporate macroeconomic features such as the VIX or interest rates as additional inputs, and investigate heteroscedastic GP models or GARCH-style noise terms that explicitly allow the predictive variance to adapt to local volatility regimes.
