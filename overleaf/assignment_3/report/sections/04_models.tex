@@ -1,61 +1,68 @@
 \section{Models}
+\label{sec:models}
 
 \subsection{Baseline: Long Short-Term Memory (LSTM) Network}
-% Architecture: 3 layers, hidden size 128, dropout rate 0.247
-% Loss: MSE during training
-% Uncertainty via MC Dropout: N=50 stochastic forward passes at inference time   (dropout kept active during inference, not just training)
-% Predictive mean = mean of the 50 samples; predictive variance = variance of the 50 samples
-The first model serves as a deep learning baseline and consists of a Long Short-Term Memory (LSTM) network designed to capture temporal dependencies in financial return sequences. The architecture contains three stacked LSTM layers with a hidden size of 128 units. To minimize overfitting, a dropout rate of 0.247 is applied between layers during training.
 
-The model is trained using Mean Squared Error (MSE) loss, which optimises point prediction accuracy of next-day log returns. However, since standard LSTMs do not inherently provide uncertainty estimates, Monte Carlo (MC) Dropout is applied at inference time to approximate predictive uncertainty. Specifically, dropout layers are kept active during evaluation, and $N=50$ stochastic forward passes are performed for each input sequence.
+The first model is a Long Short-Term Memory (LSTM) network \parencite{hochreiter1997lstm}, which serves as a deep learning baseline for capturing temporal dependencies in financial return sequences. The architecture contains three stacked LSTM layers with a hidden size of 128 units and a dropout rate of 0.247 applied between layers, both selected via hyperparameter tuning (See table \ref{tab:lstm_tuning}).
 
-This produces a predictive distribution from which uncertainty is derived as:
-\[
-\hat{\mu} = \frac{1}{N}\sum_{i=1}^{N}\hat{y}^{(i)}, \quad
-\hat{\sigma}^2 = \frac{1}{N}\sum_{i=1}^{N}(\hat{y}^{(i)} - \hat{\mu})^2.
-\]
-Thus, the LSTM acts as a deterministic forecasting model during training and an approximate Bayesian model during inference.
-
+The model is trained using Mean Squared Error (MSE) loss. Since standard LSTMs do not inherently provide uncertainty estimates, Monte Carlo (MC) Dropout \parencite{gal2016dropout} is applied at inference time: dropout layers are kept active during evaluation, and $N=50$ stochastic forward passes are performed for each input. The predictive mean and variance are then estimated as:
+\begin{equation}
+    \hat{\mu} = \frac{1}{N}\sum_{i=1}^{N}\hat{y}^{(i)}, \quad
+    \hat{\sigma}^2 = \frac{1}{N}\sum_{i=1}^{N}(\hat{y}^{(i)} - \hat{\mu})^2.
+    \label{eq:mc_dropout}
+\end{equation}
+The LSTM thus acts as a deterministic forecasting model during training and an approximate Bayesian model during inference, with its uncertainty derived from equation~\ref{eq:mc_dropout}.
 
 \subsection{Variational GP Model}
-% Kernel choice: state which kernel (RBF/Matérn) and briefly justify why
-% 100 learned inducing points: what they are and why needed for scalability (~7500 days)
-% ELBO objective: maximised during training, implicitly minimises NLL
-% Output: predictive mean and variance directly from GP posterior
-The second model is a Variational Gaussian Process (VGP), which provides a fully probabilistic framework for regression with explicit uncertainty quantification. The model uses a Radial Basis Function (RBF) kernel, chosen for its ability to capture smooth temporal variations in financial return dynamics while maintaining computational stability.
 
-To make sure the model would be able to work with approximately 7,500 trading days, the model introduces 100 learnable inducing points. These inducing variables act as a compressed representation of the full dataset, allowing the GP to approximate the posterior distribution efficiently without requiring full $\mathcal{O}(n^3)$ inference.
+The second model is a Variational Gaussian Process (GP) \parencite{10.7551/mitpress/3206.001.0001, titsias2009variational}, implemented using GPyTorch \parencite{gardner2021gpytorchblackboxmatrixmatrixgaussian}. It provides a fully probabilistic framework for regression with explicit uncertainty quantification. An RBF kernel is used for its ability to capture smooth temporal variations while maintaining computational stability.
 
-Training is performed by maximising the Evidence Lower Bound (ELBO), which jointly optimises data fit and regularisation through a Kullback--Leibler divergence term. This objective implicitly corresponds to minimising negative log-likelihood while maintaining a structured posterior approximation.
+To scale to approximately 7,500 training samples, the model uses 100 learnable inducing points \parencite{titsias2009variational} (See table \ref{tab:vgp_tuning}). These act as a compressed representation of the full dataset, enabling efficient approximate posterior inference without requiring full $\mathcal{O}(n^3)$ computation.
 
-Unlike the LSTM-based approach, the VGP directly outputs a predictive posterior distribution:
-\[
-p(y_* \mid x_*, X, y) = \mathcal{N}(\mu_*, \sigma_*^2),
-\]
-where both mean and variance are obtained analytically from the approximate GP posterior.
+Training maximises the ELBO, which jointly optimises data fit and regularisation through a KL divergence term. Unlike the LSTM, the VGP directly outputs a predictive posterior distribution:
+
+\begin{equation}
+    p(y_* \mid x_*, X, y) = \mathcal{N}(\mu_*, \sigma_*^2),
+    \label{eq:vgp_posterior}
+\end{equation}
+
+where both mean and variance in equation \ref{eq:vgp_posterior} are obtained analytically from the approximate GP posterior.
 
 \subsection{Metrics}
-% RMSE: root mean squared error for point-prediction accuracy
-% Hit Rate: directional accuracy - did the model predict the correct sign of the return?
-% NLL: Gaussian negative log-likelihood, a proper scoring rule for the full distribution
-% ECE: expected calibration error, the gap between predicted confidence and empirical accuracy
-% Briefly note why NLL and ECE are the primary metrics for evaluating uncertainty quality
-Model performance is evaluated using both predictive accuracy and uncertainty quality metrics.
+\label{sec:metrics}
 
-Root Mean Squared Error (RMSE) measures point prediction accuracy:
-\[
-\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^N (y_i - \hat{y}_i)^2}.
-\]
+Model performance is evaluated using both predictive accuracy and uncertainty quality metrics. Root Mean Squared Error (RMSE) measures point prediction accuracy as equation \ref{eq:rmse}:
+\begin{equation}
+    \mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^N (y_i - \hat{y}_i)^2}.
+    \label{eq:rmse}
+\end{equation}
 
-Hit Rate evaluates directional accuracy by measuring how often the model correctly predicts the sign of returns.
+Hit Rate evaluates directional accuracy by measuring how often the model correctly predicts the sign of the return as equation \ref{eq:hit_rate}:
+\begin{equation}
+    \mathrm{HitRate} = \frac{1}{N}\sum_{i=1}^N \mathbf{1}\!\left[\mathrm{sign}(\hat{y}_i) = \mathrm{sign}(y_i)\right].
+    \label{eq:hit_rate}
+\end{equation}
 
-For probabilistic evaluation, Negative Log-Likelihood (NLL) is used as a proper scoring rule that assesses the quality of the full predictive distribution by penalising both overconfident and underconfident predictions. Expected Calibration Error (ECE) further quantifies the discrepancy between predicted confidence and observed empirical accuracy.
+Since both models output Gaussian predictive distributions $\mathcal{N}(\mu_i, \sigma_i^2)$, the Negative Log-Likelihood (NLL) is equation \ref{eq:nll}:
+\begin{equation}
+    \mathrm{NLL} = \frac{1}{N}\sum_{i=1}^N \left[\frac{(y_i - \mu_i)^2}{2\sigma_i^2} + \frac{1}{2}\log(2\pi\sigma_i^2)\right].
+    \label{eq:nll}
+\end{equation}
+NLL is a proper scoring rule that simultaneously penalises inaccurate means and miscalibrated variances.
 
-Together, NLL and ECE directly evaluate whether the predicted distributions are both statistically consistent and well-calibrated.
+Finally, the Expected Calibration Error (ECE) quantifies miscalibration by comparing predicted confidence with empirical coverage across $B$ equal-width bins, as equation~\ref{eq:ece}:
+\begin{equation}
+    \mathrm{ECE} = \sum_{b=1}^B \frac{|B_b|}{N} \left|\mathrm{acc}(B_b) - \mathrm{conf}(B_b)\right|,
+    \label{eq:ece}
+\end{equation}
+where $\mathrm{acc}(B_b)$ is the empirical coverage in bin $b$ and $\mathrm{conf}(B_b)$ is the mean predicted confidence.
 
 
 \subsection{Hyperparameter Tuning and Training Configuration}
-% Describe the tuning procedure: search strategy (random/grid/Bayesian), number of trials
-% State that validation NLL was used as the tuning criterion (proper scoring rule)
-% Include a table of the final chosen hyperparameters for both models from the appendix?
-% Fixed training details: epochs=100, patience=10 seed=33, hardware (CUDA GPU)
+
+Hyperparameters were selected using Optuna \parencite{optuna_2019} with a GP sampler, minimising validation NLL over 50 trials (10 complete, 40 pruned via median pruning) across 5-fold cross-validation, with a training budget of 50 epochs per trial (patience 10). Full search spaces and best values are reported in appendix \ref{app:hyperparameter_tuning}.
+
+For the LSTM, the search favoured a deeper architecture (3 layers, hidden size 128) with moderate dropout (0.247) and a relatively small batch size (32). For the VGP, a higher learning rate ($1.45 \times 10^{-2}$) and 100 inducing points were selected. Cross-validation NLL values are not directly comparable between models: the LSTM is trained with MSE loss and its NLL is evaluated post-hoc, while the VGP optimises the ELBO directly.
+
+Final models were trained for 100 epochs with early stopping (patience 10), a fixed random seed of 33, and a CUDA-enabled GPU. The best checkpoint (by validation NLL) was restored after early stopping.
+
